@@ -1,0 +1,11 @@
+# Install in a dedicated environment after the Dense Qwen3-VL base environment.
+# Keep the CUDA/PyTorch pins from requirements-qwen3vl.txt unchanged.
+-r requirements-qwen3vl.txt
+gptqmodel==7.5.0
+ninja==1.13.2
+# Transformers needs Optimum to reload GPTQ checkpoints through its native
+# quantizer integration.
+optimum==2.3.0
+vllm==0.26.0
+# Keep the runtime pair explicit; vLLM 0.26.0 is hard-pinned to this release.
+compressed-tensors==0.17.0

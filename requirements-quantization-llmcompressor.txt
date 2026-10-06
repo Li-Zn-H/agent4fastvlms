@@ -1,0 +1,6 @@
+# LLM Compressor W4A16 and FP8 candidates use a separate environment because
+# compressed-tensors and vLLM releases are tightly coupled.
+-r requirements-qwen3vl.txt
+llmcompressor==0.14.0
+ninja==1.13.2
+vllm==0.26.0

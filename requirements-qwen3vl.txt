@@ -1,0 +1,8 @@
+# Python 3.12, Linux x86_64, CUDA 13.0
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cu130
+
+torch==2.11.0+cu130
+torchvision==0.26.0+cu130
+transformers==5.14.1
+Pillow==11.3.0

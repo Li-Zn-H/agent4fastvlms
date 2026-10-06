@@ -1,0 +1,37 @@
+{
+  "serving_state": "results/model/qwen3vl/stack-runtime-sp0544-token80-ctx32k/serving-state.json",
+  "kv_freeze": "results/model/qwen3vl/stack-kv-cache-sp0544-token80-ctx32k/final/kv-cache-freeze.json",
+  "output": "results/model/qwen3vl/stack-serving-lmms-sp0544-token80-ctx32k",
+  "worker_python": ".venv-quant-gptqmodel/bin/python",
+  "device": 0,
+  "baseline_root": "results/model/qwen3vl/lmms/dense",
+  "minimum_retention": 0.95,
+  "smoke_samples_per_task": 2,
+  "fallback_runtime_candidates": [
+    "baseline-auto-o2",
+    "flash-attn"
+  ],
+  "tasks": [
+    {
+      "task": "chartqa",
+      "metric": "relaxed_overall,none"
+    },
+    {
+      "task": "mmstar",
+      "metric": "average,none"
+    },
+    {
+      "task": "textvqa_val",
+      "metric": "exact_match,none"
+    },
+    {
+      "task": "docvqa_val",
+      "metric": "anls,none"
+    },
+    {
+      "task": "pope",
+      "metric": "pope_f1_score,none"
+    }
+  ],
+  "minimum_model_len": 32768
+}

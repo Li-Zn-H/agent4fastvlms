@@ -1,0 +1,40 @@
+{
+  "model_config": "configs/model.json",
+  "evaluation_config": "configs/evaluation.json",
+  "device": 0,
+  "output": "results/model/qwen3vl/quantization-heldout",
+  "calibration": {
+    "data": "data/evaluation/calibration-heldout-128.jsonl",
+    "media_root": "data/evaluation",
+    "limit": 128,
+    "purpose": "dev_disjoint_calibration"
+  },
+  "runtime": {
+    "clean_reload": true,
+    "vllm_reload": true,
+    "serve_timeout_seconds": 120,
+    "quantize": true,
+    "vllm_gpu_memory_utilization": 0.8,
+    "vllm_max_model_len": 131072,
+    "vllm_benchmark": true,
+    "vllm_benchmark_limit": 128,
+    "vllm_benchmark_warmup": 5,
+    "vllm_benchmark_repeats": 3,
+    "vllm_benchmark_batch_size": 1,
+    "warmup": 5,
+    "repeats": 1
+  },
+  "candidates": [
+    {
+      "id": "gptqmodel_w4a16_heldout",
+      "enabled": true,
+      "worker_python": ".venv-quant-gptqmodel/bin/python",
+      "route": "gptqmodel_w4a16",
+      "bits": 4,
+      "group_size": 128,
+      "scheme": "W4A16",
+      "mapper_precision": "bf16",
+      "calibration_required": true
+    }
+  ]
+}

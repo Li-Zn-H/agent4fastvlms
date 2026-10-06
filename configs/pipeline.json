@@ -1,0 +1,14 @@
+{
+  "model_id": "qwen3vl",
+  "output": "results/model/qwen3vl/pipeline",
+  "coordinator_python": ".venv-qwen3vl/bin/python",
+  "optimization_config": "configs/optimization.json",
+  "token_output": "results/model/qwen3vl/search/vision-token/runner",
+  "structured_pruning_config": "configs/structured_pruning.json",
+  "sp_probe_output": "results/model/qwen3vl/search/structured-pruning/hardware-probe",
+  "quantization_config": "configs/quantization-heldout.json",
+  "stack_config": "configs/stack.json",
+  "runtime_config": "configs/stack_runtime.json",
+  "kv_config": "configs/stack_kv_cache.json",
+  "serving_lmms_config": "configs/serving_lmms.json"
+}

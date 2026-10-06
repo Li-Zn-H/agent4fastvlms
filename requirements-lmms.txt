@@ -1,0 +1,4 @@
+-r requirements-qwen3vl.txt
+
+lmms-eval==0.7.3
+decord==0.6.0

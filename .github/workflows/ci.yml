@@ -1,0 +1,28 @@
+name: Portable checks
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check maintained documentation
+        run: python -B scripts/check_docs.py
+      - name: Inspect registry without model packages
+        run: python -B -m search.registry
+      - name: Run synthetic scoring example
+        run: python -B examples/scoring_demo.py
+      - name: Test scoring without local assets
+        run: python -B -m unittest discover -s tests -p 'test_evaluate.py' -v
+      - name: Test routing without local assets
+        run: python -B -m unittest discover -s tests -p 'test_run.py' -v

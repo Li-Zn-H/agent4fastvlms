@@ -1,0 +1,33 @@
+# Local datasets, model weights and generated results
+/data/
+/models/
+/results/*
+!/results/README.md
+/artifacts/
+/logs/
+
+# Python environments and caches
+.venv/
+.venv-*/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+/build/
+/dist/
+.coverage
+htmlcov/
+
+# Editor and local Agent state
+.vscode/
+.idea/
+.brooks-lint-history.json
+.DS_Store
+
+# Local credentials
+.env
+.env.*
+!.env.example

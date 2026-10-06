@@ -1,0 +1,5 @@
+# Optional TorchAO candidate environment.
+-r requirements-qwen3vl.txt
+torchao==0.18.0
+ninja==1.13.2
+vllm==0.26.0

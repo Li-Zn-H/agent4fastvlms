@@ -1,0 +1,5 @@
+{
+  "selection": {"score_dtype": "float32", "coverage_grid": {"rows": 6, "columns": 6}},
+  "search": {"start_keep_ratio": 0.95, "minimum_keep_ratio": 0.1,
+             "keep_ratio_step": 0.05, "consecutive_dev_failures": 2}
+}

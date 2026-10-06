@@ -1,0 +1,12 @@
+{
+  "freeze": "results/model/qwen3vl/stack-serving-lmms-sp0544-token80-ctx32k/final/serving-freeze.json",
+  "output": "results/model/qwen3vl/serving-use-sp0544-token80-ctx32k",
+  "device": 0,
+  "dense_model_config": "configs/model.json",
+  "dense_worker_python": ".venv-qwen3vl/bin/python",
+  "evaluation_config": "configs/evaluation.json",
+  "benchmark": {
+    "warmup": 5,
+    "repeats": 3
+  }
+}

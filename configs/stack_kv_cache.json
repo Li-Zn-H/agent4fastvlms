@@ -1,0 +1,25 @@
+{
+  "parent_freeze": "results/model/qwen3vl/stack-runtime-sp0544-token80-ctx32k/final/runtime-freeze.json",
+  "output": "results/model/qwen3vl/stack-kv-cache-sp0544-token80-ctx32k",
+  "dense_benchmark": "results/model/qwen3vl/search/dense/benchmark/summary.json",
+  "device": 0,
+  "worker_python": ".venv-quant-gptqmodel/bin/python",
+  "evaluation_config": "configs/evaluation.json",
+  "vision_token_config": "configs/vision_token.json",
+  "benchmark": {
+    "search_limit": 128,
+    "warmup": 5,
+    "repeats": 3,
+    "batch_sizes": [
+      1,
+      4,
+      8
+    ]
+  },
+  "candidates": [
+    {
+      "id": "kv-auto",
+      "kv_cache_dtype": "auto"
+    }
+  ]
+}

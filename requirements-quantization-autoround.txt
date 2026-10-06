@@ -1,0 +1,5 @@
+# Optional AutoRound candidate environment.
+-r requirements-qwen3vl.txt
+auto-round==0.15.1
+ninja==1.13.2
+vllm==0.26.0

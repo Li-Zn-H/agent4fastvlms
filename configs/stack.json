@@ -1,0 +1,78 @@
+{
+  "model_config": "configs/model.json",
+  "evaluation_config": "configs/evaluation.json",
+  "structured_pruning_root": "results/model/qwen3vl/search/structured-pruning/runner",
+  "quantization_root": "results/model/qwen3vl/quantization-heldout",
+  "vision_token_root": "results/model/qwen3vl/search/vision-token",
+  "output": "results/model/qwen3vl/stack",
+  "device": 0,
+  "transformation_order": [
+    "structured_pruning",
+    "quantization",
+    "vision_token"
+  ],
+  "limits": {
+    "initial_candidates": 1,
+    "total_candidates": 10
+  },
+  "quantization": {
+    "route": "gptqmodel_w4a16",
+    "worker_python": ".venv-quant-gptqmodel/bin/python",
+    "calibration": {
+      "data": "data/evaluation/calibration-heldout-128.jsonl",
+      "media_root": "data/evaluation",
+      "limit": 128,
+      "purpose": "stack_fresh_requantization"
+    },
+    "runtime": {
+      "quantize": true,
+      "clean_reload": true,
+      "vllm_reload": false
+    }
+  },
+  "token_keep_ratios": [
+    0.50,
+    0.55,
+    0.60,
+    0.65,
+    0.70,
+    0.75,
+    0.80,
+    0.85,
+    0.90,
+    0.95
+  ],
+  "recovery_axes": [
+    "paired_structured_token_recovery"
+  ],
+  "runtime": {
+    "quantize": true,
+    "transformers_reload": true,
+    "vllm_reload": true,
+    "vllm_benchmark": true,
+    "vllm_gpu_memory_utilization": 0.8,
+    "vllm_max_model_len": 8192,
+    "vllm_benchmark_limit": 128,
+    "vllm_benchmark_warmup": 5,
+    "vllm_benchmark_repeats": 1,
+    "vllm_benchmark_batch_size": 1,
+    "benchmark": true,
+    "warmup": 5,
+    "repeats": 1
+  },
+  "require_fresh_evidence": true,
+  "lmms": {
+    "enabled": true,
+    "worker_python": ".venv-quant-gptqmodel/bin/python",
+    "baseline_root": "results/model/qwen3vl/lmms/dense",
+    "minimum_retention": 0.95,
+    "output_subdir": "lmms",
+    "tasks": [
+      {"task": "chartqa", "metric": "relaxed_overall,none"},
+      {"task": "mmstar", "metric": "average,none"},
+      {"task": "textvqa_val", "metric": "exact_match,none"},
+      {"task": "docvqa_val", "metric": "anls,none"},
+      {"task": "pope", "metric": "pope_f1_score,none"}
+    ]
+  }
+}

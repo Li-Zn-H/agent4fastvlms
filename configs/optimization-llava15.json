@@ -1,0 +1,7 @@
+{
+  "model_config": "configs/model-llava15.json",
+  "evaluation_config": "configs/evaluation-llava15.json",
+  "vision_token_config": "configs/vision_token-llava15.json",
+  "device": 0,
+  "worker_python": ".venv-qwen3vl/bin/python"
+}

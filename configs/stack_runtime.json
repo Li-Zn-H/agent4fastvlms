@@ -1,0 +1,55 @@
+{
+  "parent_freeze": "results/model/qwen3vl/stack/final/stack-freeze.json",
+  "output": "results/model/qwen3vl/stack-runtime-sp0544-token80-ctx32k",
+  "dense_benchmark": "results/model/qwen3vl/search/dense/benchmark/summary.json",
+  "parent_benchmark": "results/model/qwen3vl/stack/candidates/stack-f8ae300092be984325c2/vllm-benchmark/benchmark.json",
+  "device": 0,
+  "worker_python": ".venv-quant-gptqmodel/bin/python",
+  "evaluation_config": "configs/evaluation.json",
+  "vision_token_config": "configs/vision_token.json",
+  "limits": {
+    "total_candidates": 3
+  },
+  "runtime": {
+    "vllm_gpu_memory_utilization": 0.8,
+    "vllm_max_model_len": 32768
+  },
+  "benchmark": {
+    "search_limit": 128,
+    "warmup": 5,
+    "repeats": 3,
+    "batch_size": 1
+  },
+  "candidates": [
+    {
+      "id": "compile-o1",
+      "runtime": {
+        "attention_backend": "auto",
+        "optimization_level": 1,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    },
+    {
+      "id": "baseline-auto-o2",
+      "runtime": {
+        "attention_backend": "auto",
+        "optimization_level": 2,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    },
+    {
+      "id": "flash-attn",
+      "runtime": {
+        "attention_backend": "FLASH_ATTN",
+        "optimization_level": 2,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    }
+  ]
+}

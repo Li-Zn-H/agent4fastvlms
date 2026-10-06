@@ -1,0 +1,6 @@
+{
+  "path": "models/Qwen3-VL-4B-Instruct",
+  "device": "cuda:0",
+  "dtype": "bfloat16",
+  "attn_implementation": "sdpa"
+}

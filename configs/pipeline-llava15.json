@@ -1,0 +1,14 @@
+{
+  "model_id": "llava15",
+  "output": "results/model/llava15/cuda0/pipeline",
+  "coordinator_python": ".venv-qwen3vl/bin/python",
+  "optimization_config": "configs/optimization-llava15.json",
+  "token_output": "results/model/llava15/cuda0/search/vision-token/runner",
+  "structured_pruning_config": "configs/structured_pruning-llava15.json",
+  "sp_probe_output": "results/model/llava15/cuda0/search/structured-pruning/hardware-probe",
+  "quantization_config": "configs/quantization-llava15.json",
+  "stack_config": "configs/stack-llava15.json",
+  "runtime_config": "configs/stack_runtime-llava15.json",
+  "kv_config": "configs/stack_kv_cache-llava15.json",
+  "serving_lmms_config": "configs/serving_lmms-llava15.json"
+}

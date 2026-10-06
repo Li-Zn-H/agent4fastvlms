@@ -1,0 +1,6 @@
+{
+  "model_config": "configs/model.json",
+  "evaluation_config": "configs/evaluation.json",
+  "vision_token_config": "configs/vision_token.json",
+  "device": 0
+}

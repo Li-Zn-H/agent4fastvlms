@@ -1,0 +1,84 @@
+{
+  "model_config": "configs/model.json",
+  "evaluation_config": "configs/evaluation.json",
+  "device": 0,
+  "output": "results/model/qwen3vl/quantization",
+  "calibration": {
+    "data": "data/evaluation/search-128.jsonl",
+    "media_root": "data/evaluation",
+    "limit": 16,
+    "purpose": "framework_smoke_only"
+  },
+  "runtime": {
+    "clean_reload": true,
+    "vllm_reload": true,
+    "serve_timeout_seconds": 120,
+    "quantize": true,
+    "vllm_gpu_memory_utilization": 0.8,
+    "vllm_max_model_len": 131072,
+    "vllm_benchmark": true,
+    "vllm_benchmark_limit": 128,
+    "vllm_benchmark_warmup": 5,
+    "vllm_benchmark_repeats": 3,
+    "vllm_benchmark_batch_size": 1,
+    "warmup": 5,
+    "repeats": 1
+  },
+  "candidates": [
+    {
+      "id": "gptqmodel_w4a16",
+      "enabled": true,
+      "worker_python": ".venv-quant-gptqmodel/bin/python",
+      "route": "gptqmodel_w4a16",
+      "bits": 4,
+      "group_size": 128,
+      "scheme": "W4A16",
+      "mapper_precision": "bf16",
+      "calibration_required": true
+    },
+    {
+      "id": "llm_compressor_w4a16",
+      "enabled": true,
+      "worker_python": ".venv-quant-llmcompressor/bin/python",
+      "route": "llm_compressor_w4a16",
+      "bits": 4,
+      "group_size": 128,
+      "scheme": "W4A16",
+      "mapper_precision": "bf16",
+      "calibration_required": true
+    },
+    {
+      "id": "llm_compressor_fp8",
+      "enabled": true,
+      "worker_python": ".venv-quant-llmcompressor/bin/python",
+      "route": "llm_compressor_fp8",
+      "bits": 8,
+      "group_size": 128,
+      "scheme": "FP8_DYNAMIC",
+      "mapper_precision": "bf16",
+      "calibration_required": false
+    },
+    {
+      "id": "torchao_int4",
+      "enabled": false,
+      "worker_python": ".venv-quant-torchao/bin/python",
+      "route": "torchao_int4",
+      "bits": 4,
+      "group_size": 128,
+      "scheme": "INT4_WEIGHT_ONLY",
+      "mapper_precision": "bf16",
+      "calibration_required": false
+    },
+    {
+      "id": "autoround_w4a16",
+      "enabled": false,
+      "worker_python": ".venv-quant-autoround/bin/python",
+      "route": "autoround_w4a16",
+      "bits": 4,
+      "group_size": 128,
+      "scheme": "W4A16",
+      "mapper_precision": "bf16",
+      "calibration_required": true
+    }
+  ]
+}

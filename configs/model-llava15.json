@@ -1,0 +1,8 @@
+{
+  "adapter": "llava15",
+  "hardware": "cuda",
+  "path": "models/LLaVA-1.5-7B",
+  "device": "cuda:0",
+  "dtype": "float16",
+  "attn_implementation": "sdpa"
+}
