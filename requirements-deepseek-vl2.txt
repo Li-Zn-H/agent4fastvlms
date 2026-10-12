@@ -1,0 +1,17 @@
+# Isolated native Dense Worker, Python 3.12 and Blackwell CUDA 13.0.
+# Use the pinned official source checkout in model-deepseek-vl2.json.
+# Its historical torch==2.0.1 dependency does not support this GPU; do not
+# install its pyproject dependencies over this environment.
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.10.0+cu130
+torchvision==0.25.0+cu130
+transformers==4.46.3
+# PyPI's identically versioned wheel is built against CUDA 12.8.
+xformers @ https://download.pytorch.org/whl/cu130/xformers-0.0.35-py39-none-manylinux_2_28_x86_64.whl
+accelerate==1.15.0
+timm==1.0.30
+einops==0.8.2
+sentencepiece==0.2.2
+attrdict==2.0.1
+Pillow==11.3.0

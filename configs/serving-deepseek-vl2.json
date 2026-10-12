@@ -1,0 +1,12 @@
+{
+  "freeze": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/stack-serving-lmms/final/serving-freeze.json",
+  "output": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/serving-use",
+  "device": 0,
+  "dense_model_config": "configs/model-deepseek-vl2.json",
+  "dense_worker_python": ".venv-deepseek/bin/python",
+  "evaluation_config": "configs/evaluation-deepseek-vl2.json",
+  "benchmark": {
+    "warmup": 5,
+    "repeats": 3
+  }
+}

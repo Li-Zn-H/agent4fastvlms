@@ -51,6 +51,25 @@ LLAVA_VISION_LINEAR = re.compile(
 LLAVA_MAPPER = re.compile(
     r"(?:^|\.)multi_modal_projector\.(?:linear_[12]|linear_[12]\.\w+)$"
 )
+INTERNVL_LANGUAGE_LINEAR = re.compile(
+    r"^language_model\.model\.layers\.\d+\."
+    r"(?:self_attn\.(?:q_proj|k_proj|v_proj|o_proj)|"
+    r"mlp\.(?:gate_proj|up_proj|down_proj))$"
+)
+INTERNVL_VISION_LINEAR = re.compile(
+    r"^vision_model\.encoder\.layers\.\d+\."
+    r"(?:attn\.(?:qkv|proj)|mlp\.(?:fc1|fc2))$"
+)
+INTERNVL_MAPPER = re.compile(r"^mlp1\.(?:1|3)$")
+DEEPSEEK_LANGUAGE_LINEAR = re.compile(
+    r"^language\.model\.layers\.\d+\."
+    r"(?:self_attn\.(?:q_proj|kv_a_proj_with_mqa|o_proj)|"
+    r"mlp\.(?:(?:experts\.\d+|shared_experts)\.)?(?:gate_proj|up_proj|down_proj))$"
+)
+DEEPSEEK_VISION_LINEAR = re.compile(
+    r"^vision\.blocks\.\d+\.(?:attn\.(?:qkv|proj)|mlp\.(?:fc1|fc2))$"
+)
+DEEPSEEK_MAPPER = re.compile(r"^projector\.layers\.(?:0|2)$")
 PRESERVE = re.compile(
     r"(?:^|\.)"
     r"(?:lm_head|embed_tokens|visual\.patch_embed|visual\.pos_embed|"
@@ -201,6 +220,9 @@ def validate_config(config: dict[str, Any]) -> None:
         runtime = {}
     if not isinstance(runtime, dict):
         raise ValueError("runtime must be an object")
+    if "runtime_python" in runtime and (not isinstance(runtime["runtime_python"], str)
+                                        or not runtime["runtime_python"].strip()):
+        raise ValueError("runtime.runtime_python must be a nonempty interpreter path")
     for key in ("clean_reload", "vllm_reload", "quantize", "vllm_benchmark"):
         if not isinstance(runtime.get(key, False), bool):
             raise ValueError(f"runtime.{key} must be boolean")
@@ -223,16 +245,25 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("runtime.vllm_benchmark_warmup must be a nonnegative integer")
 
 
+def _module_patterns(model_adapter):
+    if model_adapter == "deepseek_vl2":
+        return DEEPSEEK_LANGUAGE_LINEAR, DEEPSEEK_VISION_LINEAR, DEEPSEEK_MAPPER
+    if model_adapter == "internvl35":
+        return INTERNVL_LANGUAGE_LINEAR, INTERNVL_VISION_LINEAR, INTERNVL_MAPPER
+    if model_adapter in {"llava_onevision", "llava15"}:
+        return LANGUAGE_LINEAR, LLAVA_VISION_LINEAR, LLAVA_MAPPER
+    return LANGUAGE_LINEAR, VISION_LINEAR, MAPPER
+
+
 def classify_module(name: str, *, model_adapter: str = "qwen3_vl") -> str:
     """Return the intended precision for a model module name."""
 
     # Explicit preservation wins over broad linear matching.  This protects
     # the visual-to-language interface even if a backend exposes it as Linear.
-    mapper = LLAVA_MAPPER if model_adapter in {"llava_onevision", "llava15"} else MAPPER
-    vision = LLAVA_VISION_LINEAR if model_adapter in {"llava_onevision", "llava15"} else VISION_LINEAR
+    language, vision, mapper = _module_patterns(model_adapter)
     if PRESERVE.search(name) or mapper.search(name):
         return MODULE_PRECISION_BF16
-    if LANGUAGE_LINEAR.search(name) or vision.search(name):
+    if language.search(name) or vision.search(name):
         return MODULE_PRECISION_INT4
     return MODULE_PRECISION_BF16
 
@@ -304,9 +335,8 @@ def validate_module_inventory(
 
     names = sorted(set(module_names))
     selected = assignment(names, model_adapter=model_adapter)
-    language = [name for name in names if LANGUAGE_LINEAR.search(name)]
-    vision_pattern = LLAVA_VISION_LINEAR if model_adapter in {"llava_onevision", "llava15"} else VISION_LINEAR
-    mapper_pattern = LLAVA_MAPPER if model_adapter in {"llava_onevision", "llava15"} else MAPPER
+    language_pattern, vision_pattern, mapper_pattern = _module_patterns(model_adapter)
+    language = [name for name in names if language_pattern.search(name)]
     vision = [name for name in names if vision_pattern.search(name)]
     mapper = [name for name in names if mapper_pattern.search(name)]
     missing = []

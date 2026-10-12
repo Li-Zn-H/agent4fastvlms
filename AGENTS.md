@@ -34,6 +34,8 @@ stage guide and selected JSON before changing code or running commands.
    timing workload is performance evidence only.
 4. Only valid full LMMS quality failure triggers paired recovery: the next wider
    SP and next higher Token ratio together. JSON owns ladders and finite budgets.
+   Explicit `token_recovery_exhaustion: reuse_last_qualified` may reuse the last
+   qualified Token source after its ladder ends while SP widens, within that budget.
    Distinguish exhausted budget with an unseen neighbor from exhausted ladder.
 5. Runtime owns attention, compilation, CUDA Graph and fusion. KV starts from
    `runtime-freeze.json` and owns dtype/concurrency. Neither rewrites Stack.

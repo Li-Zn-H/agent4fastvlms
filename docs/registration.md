@@ -1,11 +1,28 @@
 # Model and Hardware Registration
 
 The registry selects implementations; capability checks determine whether a
-stage may enter environment validation. The public model targets are `qwen3_vl`
-and `llava15`, on `cuda`. Dense dispatches loading, input preparation, visual-token counts and
+stage may enter environment validation. The complete pipeline targets are
+`qwen3_vl`, `llava15`, `internvl35` and `deepseek_vl2`, on `cuda`.
+Dense dispatches loading, input preparation, visual-token counts and
 timing hooks through adapters. CUDA identity checks and Worker launches use the
 hardware registry. Other Skills retain their algorithms and loops, with static
 scope checks before execution.
+
+The `internvl35` adapter and pipeline ID are enabled after complete local
+Dense/Token/SP, quantization, Stack, Runtime/KV, native five-task serving LMMS,
+image inference and matched Dense timing. The selected RTX PRO 6000 reference
+achieves 2.2728x acceleration at 94.5999% mean retention and remains explicitly
+below the 95% quality target. See its [execution scope](internvl-preparation.md)
+and [reported result](status.md#internvl35-14b-cuda-2026-10-09). Registration
+does not imply quality qualification or transfer measurements to another scope.
+
+The `deepseek_vl2` adapter and pipeline ID target the full DeepSeek-VL2 checkpoint.
+Complete local Dense, independent searches, physical MoE Stack, Runtime/Auto KV,
+native final serving LMMS, image inference and matched original Dense timing
+have model-specific evidence. Native Stack retains 97.4211%; final serving
+retains 97.2659% and accelerates 4.8167x on RTX PRO 6000. Registration enables
+orchestration, not quality qualification for another job. See its
+[integration scope](deepseek-vl2-preparation.md) and [measurements](status.md).
 
 ## File responsibilities
 
@@ -16,6 +33,7 @@ scope checks before execution.
 | [adapters/qwen3vl.py](../adapters/qwen3vl.py) | Qwen3-VL entry points, stages, platforms and architecture scope |
 | [adapters/qwen3vl_dense.py](../adapters/qwen3vl_dense.py) | Dense loading, native inputs, Token geometry and timing |
 | [adapters/llava15.py](../adapters/llava15.py), [Dense implementation](../adapters/llava15_dense.py) | LLaVA-1.5-7B pipeline, fixed-resolution Token and Llama/CLIP integration, with separate local execution evidence |
+| [adapters/deepseek_vl2.py](../adapters/deepseek_vl2.py), [Dense implementation](../adapters/deepseek_vl2_dense.py) | Full DeepSeek-VL2 CUDA pipeline, native dynamic tiling, physical MoE/MLA Stack and matching local execution evidence |
 | [adapters/cuda.py](../adapters/cuda.py) | CUDA device selection, identity and isolated Worker launch |
 | [adapters/capabilities.py](../adapters/capabilities.py) | Static Dense, Token, SP, quantization, Stack, Runtime, KV and LMMS capability matrix |
 | [adapters/__init__.py](../adapters/__init__.py) | Explicit built-in registration |
@@ -113,9 +131,11 @@ remain independently maintained.
 2. Implement `dense_load(config) -> (model, processor)`, `processor_load(config)`,
    `prepare_inputs(processor, sample, media_root)`,
    `generation_timer(model, pruning=False)` and `image_token_count(model, inputs)`.
-   Input preparation returns a batch supporting `.to(device)`. Shared generation
-   expects outputs to contain the input prefix and decodes the suffix with
-   `processor.batch_decode()`. Adapt generation further when this contract differs.
+   Input preparation returns a batch supporting `.to(device)`. Set the adapter's
+   `generation_includes_prompt` to match the actual generation output. The shared
+   loop removes the input prefix when this is true; otherwise it decodes the
+   entire generated tensor with `processor.batch_decode()`. Native DeepSeek-VL2
+   and InternVL3.5 return answer tokens only and set it to false.
 3. Declare only implemented `stages` and real `entrypoints`; implement
    `validate_checkpoint()` and required `validate_stage()` scope checks.
 4. Register explicitly with `models.register(YourAdapter())` in `adapters/__init__.py`.

@@ -26,6 +26,17 @@ def keep_count(rows, columns, ratio, grid):
     return min(count, max(requested, floor))
 
 
+def geometry_keep_count(geometry, ratio, grid):
+    """Count selected grid features plus native protected layout tokens."""
+    repeats = geometry.get("repeats", 1)
+    if type(repeats) is not int or repeats < 1:
+        raise ValueError("Geometry repeats must be a positive integer")
+    protected = geometry.get("protected_tokens", 0)
+    if type(protected) is not int or protected < 0:
+        raise ValueError("Protected layout token count must be a nonnegative integer")
+    return repeats * keep_count(geometry["rows"], geometry["columns"], ratio, grid) + protected
+
+
 def select_indices(features, rows, columns, ratio, config):
     """Select coverage representatives, fill by score, then restore spatial order."""
     import torch

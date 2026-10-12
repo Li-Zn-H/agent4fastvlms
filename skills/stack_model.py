@@ -55,8 +55,14 @@ def stack_architecture_for_config(config: Any) -> str:
     model_type = getattr(config, "model_type", None)
     if model_type is None and isinstance(config, dict):
         model_type = config.get("model_type")
+    if model_type == "deepseek_vl_v2":
+        from skills.deepseek_vl2_artifact import STACK_ARCHITECTURE as deepseek_architecture
+        return deepseek_architecture
     if model_type == "llava":
         return LLAVA15_STACK_ARCHITECTURE
+    if model_type == "internvl_chat":
+        from skills.internvl35_artifact import STACK_ARCHITECTURE as internvl_architecture
+        return internvl_architecture
     return LLAVA_STACK_ARCHITECTURE if model_type == "llava_onevision" else STACK_ARCHITECTURE
 
 
@@ -173,6 +179,14 @@ def write_pruned_parent(
 ) -> dict[str, Any]:
     """Persist a physical SP parent with an explicit topology manifest."""
 
+    if getattr(model.config, "model_type", None) == "deepseek_vl_v2":
+        from skills.deepseek_vl2_artifact import write_parent
+        return write_parent(model, processor, recipe, output_dir)
+
+    if getattr(model.config, "model_type", None) == "internvl_chat":
+        from skills.internvl35_artifact import write_parent
+        return write_parent(model, processor, recipe, output_dir)
+
     destination = Path(output_dir)
     if destination.exists():
         raise FileExistsError(f"Stack parent already exists: {destination}")
@@ -220,6 +234,13 @@ def write_pruned_parent(
 
 def load_stack_model(model_config: dict[str, Any]) -> tuple[Any, Any]:
     """Load a Stack topology directly; Dense loading remains unchanged."""
+
+    if model_config.get("adapter") == "deepseek_vl2":
+        from skills.deepseek_vl2_artifact import load_artifact
+        return load_artifact(model_config)
+    if model_config.get("adapter") == "internvl35":
+        from skills.internvl35_artifact import load_artifact
+        return load_artifact(model_config)
 
     import torch
     from transformers import AutoProcessor

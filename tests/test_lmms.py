@@ -79,7 +79,8 @@ class LmmsTests(unittest.TestCase):
                     "task_hashes": {"pope": "same"},
                 }))
                 (folder / "run_samples_pope.jsonl").write_text(
-                    '{"doc_id":"a"}\n{"doc_id":"b"}\n'
+                    '{"doc_id":"a","doc_hash":"hash-a"}\n'
+                    '{"doc_id":"b","doc_hash":"hash-b"}\n'
                 )
             (candidate / "pope-token-mechanism.jsonl").write_text(
                 '{"token_keep_ratio":0.6,"image_tokens_before":10,"image_tokens_after":6,'
@@ -109,7 +110,8 @@ class LmmsTests(unittest.TestCase):
                     "task_hashes": {"pope": "same"},
                 }))
                 (folder / "run_samples_pope.jsonl").write_text(
-                    '{"doc_id":"a"}\n{"doc_id":"b"}\n'
+                    '{"doc_id":"a","doc_hash":"hash-a"}\n'
+                    '{"doc_id":"b","doc_hash":"hash-b"}\n'
                 )
             (candidate / "pope-token-mechanism.jsonl").write_text(
                 '{"token_keep_ratio":0.5,"image_tokens_before":10,"image_tokens_after":10,'
@@ -123,6 +125,87 @@ class LmmsTests(unittest.TestCase):
                 token_keep_ratio=.5,
             )
             self.assertEqual(summary["quality_gate"], "passed")
+
+    def test_native_gate_requires_complete_aligned_sample_files(self):
+        samples = [{"doc_id": 0, "doc_hash": "hash-0"},
+                   {"doc_id": 1, "doc_hash": "hash-1"}]
+        invalid = [
+            ("truncated", samples[:1], "IDs/count"),
+            ("duplicate", [samples[0], samples[0]], "IDs/count"),
+            ("different_id", [samples[0], samples[1] | {"doc_id": 2}], "alignment"),
+            ("different_document", [samples[0], samples[1] | {"doc_hash": "wrong"}], "alignment"),
+            ("missing_hash", [{"doc_id": 0}, samples[1]], "hash"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("candidate", "dense"):
+                folder = root / name
+                folder.mkdir()
+                (folder / "run_results.json").write_text(json.dumps({
+                    "results": {"pope": {"pope_f1_score,none": .8}},
+                    "n-samples": {"pope": {"effective": 2}},
+                    "task_hashes": {"pope": "same"},
+                }))
+
+            def write_samples(name, rows):
+                (root / name / "run_samples_pope.jsonl").write_text(
+                    "".join(json.dumps(row) + "\n" for row in rows)
+                )
+
+            def evaluate():
+                return aggregate_lmms(root / "candidate", root / "dense", tasks=[
+                    {"task": "pope", "metric": "pope_f1_score,none"},
+                ])
+
+            for folder in ("candidate", "dense"):
+                for case, rows, error in invalid:
+                    with self.subTest(folder=folder, case=case):
+                        for name in ("candidate", "dense"):
+                            write_samples(name, samples)
+                        write_samples(folder, rows)
+                        with self.assertRaisesRegex(ValueError, error):
+                            evaluate()
+            write_samples("dense", samples)
+            write_samples("candidate", list(reversed(samples)))
+            self.assertEqual(evaluate()["quality_gate"], "passed")
+
+    def test_native_gate_rejects_nonfinite_scores_and_empty_reported_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("candidate", "dense"):
+                folder = root / name
+                folder.mkdir()
+                (folder / "run_samples_pope.jsonl").write_text(
+                    '{"doc_id":0,"doc_hash":"hash-0"}\n'
+                )
+
+            def write_result(name, score=.8, count=1):
+                (root / name / "run_results.json").write_text(json.dumps({
+                    "results": {"pope": {"pope_f1_score,none": score}},
+                    "n-samples": {"pope": {"effective": count}},
+                    "task_hashes": {"pope": "same"},
+                }))
+
+            def evaluate():
+                return aggregate_lmms(root / "candidate", root / "dense", tasks=[
+                    {"task": "pope", "metric": "pope_f1_score,none"},
+                ])
+
+            for folder in ("candidate", "dense"):
+                for score in (float("nan"), float("inf"), float("-inf")):
+                    with self.subTest(folder=folder, score=score):
+                        for name in ("candidate", "dense"):
+                            write_result(name)
+                        write_result(folder, score=score)
+                        with self.assertRaisesRegex(ValueError, "metric|denominator"):
+                            evaluate()
+            for count in (0, True):
+                with self.subTest(count=count):
+                    for name in ("candidate", "dense"):
+                        write_result(name, count=count)
+                    with self.assertRaisesRegex(ValueError, "count"):
+                        evaluate()
+
     def test_five_tasks_and_native_generation(self):
         self.assertEqual(set(TASKS), {"mmstar", "textvqa_val", "docvqa_val", "chartqa", "pope"})
         command = build_command(MODEL, "pope", Path("results"))

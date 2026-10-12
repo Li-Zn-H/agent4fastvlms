@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from search import serving
+from search.optimize import lock
 from search.worker import save_json
 from skills.quantization import digest
 
@@ -184,6 +185,7 @@ class ServingTests(unittest.TestCase):
                 calls.append(request["backend"])
                 self.finish(request, directory)
             with patch("search.serving.snapshot", return_value=snap), \
+                    patch("search.serving.lock", side_effect=lambda path: lock(Path(folder) / path.name)), \
                     patch("search.serving.hardware", return_value="same-gpu"), \
                     patch("search.serving.launch", side_effect=launch):
                 result = serving.execute("unused.json", benchmark=True)
@@ -204,6 +206,7 @@ class ServingTests(unittest.TestCase):
                     raise RuntimeError("engine failed")
                 self.finish(request, directory)
             with patch("search.serving.snapshot", return_value=snap), \
+                    patch("search.serving.lock", side_effect=lambda path: lock(Path(folder) / path.name)), \
                     patch("search.serving.hardware", return_value="same-gpu"), \
                     patch("search.serving.launch", side_effect=launch):
                 with self.assertRaisesRegex(RuntimeError, "engine failed"):

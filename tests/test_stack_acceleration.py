@@ -1,12 +1,13 @@
 """CPU contracts for acceleration layers on a frozen Stack."""
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from search.stack_acceleration import _comparison_profile, _dense_comparison, _freeze, plan, snapshot
+from search.stack_acceleration import _comparison_profile, _copy_receipts, _dense_comparison, _freeze, plan, snapshot
 from search.stack_serving import execute_pipeline
 from skills.quantization import digest
 from skills.stack_kv_cache import validate_config as validate_kv_config
@@ -19,6 +20,26 @@ from skills.stack_runtime import (
 
 
 class StackAccelerationTests(unittest.TestCase):
+    def test_failed_worker_diagnostics_survive_temporary_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            attempt = Path(directory) / ".work" / "fp8"
+            candidate = Path(directory) / "candidates" / "fp8"
+            attempt.mkdir(parents=True)
+            request = '{"operation":"stack_kv_cache_candidate"}\n'
+            diagnostic = "Engine startup failed\nSpecific backend initialization error\n"
+            (attempt / "request.json").write_text(request)
+            (attempt / "worker.log").write_text(diagnostic)
+            (attempt / "probe.json").write_text(json.dumps({
+                "status": "runtime_blocked", "benchmarks": {},
+                "error": "Engine core initialization failed",
+            }))
+            _copy_receipts(attempt, candidate)
+            shutil.rmtree(attempt)
+            self.assertEqual((candidate / "request.json").read_text(), request)
+            self.assertEqual((candidate / "worker.log").read_text(), diagnostic)
+            self.assertEqual(json.loads((candidate / "probe.json").read_text())["status"],
+                             "runtime_blocked")
+
     def test_runtime_kwargs_are_translated_without_vllm_import(self):
         kwargs = build_vllm_runtime_kwargs(
             {

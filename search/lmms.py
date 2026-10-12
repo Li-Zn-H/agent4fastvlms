@@ -17,12 +17,17 @@ def cache_environment(model_config=None):
     env = os.environ.copy()
     for key in ("A4FVLMSP_TOKEN_KEEP_RATIO", "A4FVLMSP_TOKEN_SELECTION", "A4FVLMSP_TOKEN_RECEIPT",
                 "A4FVLM_LMMS_VLLM_MODEL", "A4FVLM_VLLM_SELECTION_TRACE", "A4FVLMS_VLLM_TOKEN_RUNTIME",
-                "A4FVLM_VLLM_MODEL_RECEIPT"):
+                "A4FVLM_VLLM_MODEL_RECEIPT", "A4FVLM_LMMS_INTERNVL_MODEL", "A4FVLM_LMMS_DEEPSEEK_MODEL"):
         env.pop(key, None)
     cache = PROJECT_ROOT / "data/lmms"
     env["HF_HUB_CACHE"] = str(cache / "hub")
     env["HF_DATASETS_CACHE"] = str(cache / "datasets")
     env["LMMS_EVAL_HOME"] = str(cache / "lmms")
+    # The five native task splits and their evaluation scripts were validated
+    # in the project-local cache.  Keep later launches deterministic and avoid
+    # waiting on unavailable Hub metadata before datasets falls back locally.
+    env["HF_HUB_OFFLINE"] = "1"
+    env["HF_DATASETS_OFFLINE"] = "1"
     # Quantized backends provide Ninja/Marlin helpers in the selected
     # interpreter's bin directory.  LMMS launches a child process, so make
     # that isolated toolchain visible without modifying the Dense shell PATH.
@@ -37,6 +42,14 @@ def cache_environment(model_config=None):
             )
     if isinstance(model_config, dict) and model_config.get("execution_backend") == "vllm":
         env["A4FVLM_LMMS_VLLM_MODEL"] = json.dumps(model_config)
+    if isinstance(model_config, dict) and model_config.get("adapter") == "internvl35":
+        from search.lmms_internvl_entry import validate_native_config
+        validate_native_config(model_config)
+        env["A4FVLM_LMMS_INTERNVL_MODEL"] = json.dumps(model_config)
+    if isinstance(model_config, dict) and model_config.get("adapter") == "deepseek_vl2":
+        from search.lmms_deepseek_entry import validate_native_config
+        validate_native_config(model_config)
+        env["A4FVLM_LMMS_DEEPSEEK_MODEL"] = json.dumps(model_config)
     return env
 
 
@@ -44,6 +57,8 @@ def build_command(model_config, task, destination, *, limit=None):
     if task not in TASKS:
         raise ValueError(f"Unsupported task: {task}")
     adapter = model_config.get("adapter", "qwen3_vl")
+    if adapter not in {"qwen3_vl", "llava_onevision", "llava15", "internvl35", "deepseek_vl2"}:
+        raise ValueError(f"No native LMMS implementation for {adapter}")
     if adapter == "qwen3_vl" and model_config["dtype"] != "bfloat16":
         raise ValueError("The native Qwen3-VL adapter loads BF16 weights")
     if limit is not None and limit < 1:
@@ -63,7 +78,22 @@ def build_command(model_config, task, destination, *, limit=None):
     # even though its module still exists, so using it fails before model
     # construction and produces no task receipt.
     model_name = "llava_hf" if adapter in {"llava_onevision", "llava15"} else "qwen3_vl"
-    if model_config.get("stack_adapter") is True:
+    if adapter == "deepseek_vl2":
+        from search.lmms_deepseek_entry import validate_native_config
+        validate_native_config(model_config)
+        command = [sys.executable, str(PROJECT_ROOT / "search/lmms_deepseek_entry.py"),
+                   "--model", "deepseek_vl2", "--model_args", model_args,
+                   "--tasks", task, "--batch_size", "1", "--output_path", str(destination), "--log_samples"]
+    elif adapter == "internvl35":
+        from search.lmms_internvl_entry import validate_native_config
+        validate_native_config(model_config)
+        model_args = ",".join((f"pretrained={pretrained}", f"device={model_config['device']}",
+                               f"device_map={model_config['device']}", "use_flash_attn=False", "max_num=12"))
+        entry = "lmms_internvl_vllm_entry.py" if model_config.get("execution_backend") == "vllm" else "lmms_internvl_entry.py"
+        command = [sys.executable, str(PROJECT_ROOT / "search" / entry),
+                   "--model", "internvl3_5", "--model_args", model_args,
+                   "--tasks", task, "--batch_size", "1", "--output_path", str(destination), "--log_samples"]
+    elif model_config.get("stack_adapter") is True:
         # lmms-eval's stock qwen3_vl adapter selects the dense HF class by
         # name.  The launcher patches that resolver for the physical Stack
         # topology before dispatching the normal CLI, so the final LMMS run
@@ -205,7 +235,18 @@ def main():
     args = parser.parse_args()
     config = json.loads((PROJECT_ROOT / args.model_config).read_text())
     from search.context import require_stages
-    require_stages(config, ("lmms",))
+    # The complete `lmms` stage also requires a serving/vLLM bridge. InternVL
+    # has separately guarded native entries, without enabling final serving.
+    if config.get("adapter") == "internvl35":
+        from search.lmms_internvl_entry import validate_native_config
+        validate_native_config(config)
+        require_stages(config, ("dense",))
+    elif config.get("adapter") == "deepseek_vl2":
+        from search.lmms_deepseek_entry import validate_native_config
+        validate_native_config(config)
+        require_stages(config, ("dense",))
+    else:
+        require_stages(config, ("lmms",))
     run_lmms(config, args.tasks.split(","), output_dir=args.output, limit=args.limit, resume=args.resume)
 
 

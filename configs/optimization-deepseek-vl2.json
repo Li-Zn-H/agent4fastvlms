@@ -1,0 +1,7 @@
+{
+  "model_config": "configs/model-deepseek-vl2.json",
+  "evaluation_config": "configs/evaluation-deepseek-vl2.json",
+  "vision_token_config": "configs/vision_token-deepseek-vl2.json",
+  "device": 0,
+  "worker_python": ".venv-deepseek/bin/python"
+}

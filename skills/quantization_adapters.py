@@ -347,6 +347,16 @@ def _write_manifest(
 
 
 def _export_gptqmodel(*, candidate, model, processor, calibration, output_dir, module_names):
+    if model.get("adapter") == "deepseek_vl2":
+        from skills.deepseek_vl2_quantization import export_multimodal_gptq
+        return export_multimodal_gptq(candidate=candidate, model=model, processor=processor,
+                                      calibration=calibration, output_dir=output_dir,
+                                      module_names=module_names)
+    if model.get("adapter") == "internvl35":
+        from skills.internvl35_quantization import export_multimodal_gptq
+        return export_multimodal_gptq(candidate=candidate, model=model, processor=processor,
+                                      calibration=calibration, output_dir=output_dir,
+                                      module_names=module_names)
     if model.get("adapter") == "llava15":
         from skills.llava15_quantization import export_multimodal_gptq
 

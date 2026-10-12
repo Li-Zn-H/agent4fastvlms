@@ -1,15 +1,18 @@
 # Public Source Preparation
 
-This edition presents Qwen3-VL-4B and LLaVA-1.5-7B. It retains core adapters,
-Skills, orchestration, evaluation, benchmark/recovery code, regression tests,
-their main JSON jobs, setup and method guides. Shared internal model helpers stay
-in place to preserve the validated implementations.
+This edition presents Qwen3-VL-4B, LLaVA-1.5-7B, InternVL3.5-14B and the full
+DeepSeek-VL2 integration. It retains core adapters, Skills, orchestration,
+evaluation, benchmark/recovery code, regression tests, the main JSON jobs, setup
+and method guides. Shared internal model helpers stay in place to preserve the
+validated implementations.
 
 Historical candidate configs, long development histories, experiment outputs,
 weights, datasets, virtual environments, local Git history and caches are omitted.
 The original local experiments remain separate. No search thresholds, measured
 outcomes or implementation algorithms were changed for this preparation.
-Generic quantization export/reuse tests now reference the retained LLaVA-1.5 job.
+Generic quantization export/reuse tests now reference the retained LLaVA-1.5 job;
+model-specific DeepSeek and InternVL tests remain asset-aware and are documented
+with their local evidence scope.
 
 Preparation validation on 2026-10-06 passed documentation/link checks, all 25
 JSON config references, Python syntax checks, the synthetic example and 21
@@ -27,8 +30,10 @@ a source-only checkout. They do not load model packages or certify GPU behavior.
 
 All reference measurements in [status](status.md) are reported local results.
 Raw receipts, exact Search/Dev selection and calibration are not distributed;
-this edition does not claim independent end-to-end reproduction. The two public
-model configurations retain their documented preparation requirements.
+this edition does not claim independent end-to-end reproduction. The four public
+model configurations retain their documented preparation requirements. Reported
+GPU results remain local measurements; the source checkout does not contain
+checkpoints, datasets or raw receipts.
 
 ## Remaining release decisions
 

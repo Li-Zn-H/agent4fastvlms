@@ -17,6 +17,9 @@ STRATA = ("visual_prefill", "text_prefill", "decode")
 
 
 def validate_config(config, dimensions):
+    if dimensions.get("model_type") == "deepseek_vl_v2":
+        from skills.deepseek_vl2_pruning import validate_config as validate
+        return validate(config, dimensions)
     selection = config["selection"]
     if selection["score"] != SCORE or selection["score_dtype"] != "float32":
         raise ValueError(
@@ -112,6 +115,9 @@ def contribution_scores(moments, down_column_norms):
 
 def load_calibration(directory, dimensions):
     """Validate the complete frozen layer domain, retaining its original protocol."""
+    if dimensions.get("model_type") == "deepseek_vl_v2":
+        from skills.deepseek_vl2_pruning import load_calibration as load
+        return load(directory, dimensions)
     directory = Path(directory)
     manifest = json.loads((directory / "score-manifest.json").read_text())
     if manifest["scorer_id"] != SCORE:
@@ -137,6 +143,9 @@ def load_calibration(directory, dimensions):
 
 def make_recipe(scores, widths, dimensions, selection) -> dict[str, Any]:
     """Drop the lowest scores; ties use the original channel index."""
+    if dimensions.get("model_type") == "deepseek_vl_v2":
+        from skills.deepseek_vl2_pruning import make_recipe as make
+        return make(scores, widths, dimensions, selection)
     original = dimensions["intermediate_size"]
     count = dimensions["num_hidden_layers"]
     if len(scores) != count or len(widths) != count:
@@ -169,6 +178,9 @@ def make_recipe(scores, widths, dimensions, selection) -> dict[str, Any]:
 
 
 def validate_recipe(recipe, dimensions):
+    if dimensions.get("model_type") == "deepseek_vl_v2":
+        from skills.deepseek_vl2_pruning import validate_recipe as validate
+        return validate(recipe, dimensions)
     if recipe["dimensions"] != dimensions:
         raise ValueError("Recipe dimensions differ from the Dense model")
     count = dimensions["num_hidden_layers"]
@@ -237,15 +249,26 @@ def slice_mlp(mlp, channels):
     mlp.intermediate_size = len(channels)
 
 
+def decoder_topology(model):
+    """Return native text config/layers without mutating or aliasing the model."""
+    if getattr(model.config, "model_type", None) == "internvl_chat":
+        return model.config.llm_config, model.language_model.model.layers
+    if getattr(model.config, "model_type", None) == "deepseek_vl_v2":
+        return model.config.language_config, model.language.model.layers
+    return model.config.text_config, model.model.language_model.layers
+
+
 def apply_recipe(model, recipe):
     """Apply once to a freshly loaded Dense model; never reintroduce channels."""
-    config = model.config.text_config
+    if getattr(model.config, "model_type", None) == "deepseek_vl_v2":
+        from skills.deepseek_vl2_pruning import apply_recipe as apply
+        return apply(model, recipe)
+    config, layers = decoder_topology(model)
     dimensions = {
         key: getattr(config, key)
         for key in ("num_hidden_layers", "hidden_size", "intermediate_size")
     }
     validate_recipe(recipe, dimensions)
-    layers = model.model.language_model.layers
     if (
         hasattr(model, "structured_pruning_recipe")
         or len(layers) != dimensions["num_hidden_layers"]
@@ -269,10 +292,13 @@ def apply_recipe(model, recipe):
 
 def audit_recipe(model, recipe):
     """Record actual compact shapes and parameter counts before evaluation."""
+    if getattr(model.config, "model_type", None) == "deepseek_vl_v2":
+        from skills.deepseek_vl2_pruning import audit_recipe as audit
+        return audit(model, recipe)
     shapes = []
     hidden = recipe["dimensions"]["hidden_size"]
     for index, (layer, width) in enumerate(
-        zip(model.model.language_model.layers, recipe["widths"], strict=True)
+        zip(decoder_topology(model)[1], recipe["widths"], strict=True)
     ):
         actual = {
             name: list(getattr(layer.mlp, name).weight.shape)
@@ -295,7 +321,12 @@ def audit_recipe(model, recipe):
 
 
 def validate_search(config):
-    if config["allocation"]["method"] != "layer_normalized_marginal_cost_v1":
+    method = config["allocation"]["method"]
+    if method == "moe_layer_normalized_marginal_cost_v1":
+        from skills.deepseek_vl2_pruning import SCORE as moe_score
+        if config["selection"]["score"] != moe_score:
+            raise ValueError("MoE allocation requires routing-weighted calibration")
+    elif method != "layer_normalized_marginal_cost_v1":
         raise ValueError("Unknown allocation method")
     policy = config["search"]
     budget = policy.get("maximum_quality_candidates")
@@ -371,6 +402,9 @@ def allocation_path(
     zero cost; ties use layer index, then target width. This is a proxy, not an
     independently measured layer-sensitivity estimate.
     """
+    if dimensions.get("model_type") == "deepseek_vl_v2":
+        from skills.deepseek_vl2_pruning import allocation_path as allocate
+        return allocate(scores, dimensions, selection, admitted_widths, starting_widths=starting_widths)
     original = dimensions["intermediate_size"]
     layers = dimensions["num_hidden_layers"]
     widths = sorted(set(admitted_widths), reverse=True)

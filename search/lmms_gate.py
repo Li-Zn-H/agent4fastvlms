@@ -202,7 +202,8 @@ def aggregate_lmms(
         dense_path, dense = _task_result(dense_root, task)
         candidate_count = candidate.get("n-samples", {}).get(task, {}).get("effective")
         dense_count = dense.get("n-samples", {}).get(task, {}).get("effective")
-        if candidate_count != dense_count or not isinstance(candidate_count, int):
+        if (type(candidate_count) is not int or type(dense_count) is not int
+                or candidate_count < 1 or candidate_count != dense_count):
             raise ValueError(f"Sample count mismatch for {task}")
         candidate_hash = candidate.get("task_hashes", {}).get(task)
         dense_hash = dense.get("task_hashes", {}).get(task)
@@ -210,10 +211,11 @@ def aggregate_lmms(
             raise ValueError(f"Task hash mismatch for {task}")
         dense_score = dense.get("results", {}).get(task, {}).get(metric)
         candidate_score = candidate.get("results", {}).get(task, {}).get(metric)
-        if not isinstance(dense_score, (int, float)) or dense_score <= 0:
+        if (type(dense_score) not in (int, float) or not math.isfinite(dense_score)
+                or dense_score <= 0):
             raise ValueError(f"Invalid Dense denominator for {task}")
-        if not isinstance(candidate_score, (int, float)):
-            raise ValueError(f"Missing candidate metric {metric} for {task}")
+        if type(candidate_score) not in (int, float) or not math.isfinite(candidate_score):
+            raise ValueError(f"Invalid candidate metric {metric} for {task}")
         mechanism = _mechanism_file(candidate_root, task, candidate_count, token_keep_ratio,
                                     backend=execution_backend)
         if execution_backend == "vllm":
@@ -221,15 +223,21 @@ def aggregate_lmms(
             if descriptor is None:
                 raise ValueError(f"Missing serving model descriptor for {task}")
             _serving_receipt(candidate_root, task, descriptor)
-            sample_sets = []
-            for result_path in (candidate_path, dense_path):
-                samples = [json.loads(line) for line in _sample_file(result_path, task).read_text().splitlines() if line.strip()]
-                aligned = {row["doc_id"]: row.get("doc_hash") for row in samples}
-                if len(samples) != candidate_count or len(aligned) != candidate_count:
-                    raise ValueError(f"Sample IDs/count mismatch for {task}")
-                sample_sets.append(aligned)
-            if sample_sets[0] != sample_sets[1]:
-                raise ValueError(f"Dense/candidate sample alignment mismatch for {task}")
+        sample_sets = []
+        for result_path in (candidate_path, dense_path):
+            samples = [json.loads(line) for line in _sample_file(result_path, task).read_text().splitlines()
+                       if line.strip()]
+            if len(samples) != candidate_count:
+                raise ValueError(f"Sample IDs/count mismatch for {task}")
+            if any(not isinstance(row, dict) or type(row.get("doc_id")) not in (int, str)
+                   or not isinstance(row.get("doc_hash"), str) or not row["doc_hash"] for row in samples):
+                raise ValueError(f"Missing sample identity/hash for {task}")
+            aligned = {row["doc_id"]: row["doc_hash"] for row in samples}
+            if len(aligned) != candidate_count:
+                raise ValueError(f"Sample IDs/count mismatch for {task}")
+            sample_sets.append(aligned)
+        if sample_sets[0] != sample_sets[1]:
+            raise ValueError(f"Dense/candidate sample alignment mismatch for {task}")
         task_rows.append(
             {
                 "task": task,

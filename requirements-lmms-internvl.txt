@@ -1,0 +1,5 @@
+-r requirements-internvl.txt
+lmms-eval==0.7.3
+# Provides the `decord` import with a correctly tagged CPython 3.12 wheel.
+# https://github.com/johnnynunez/decord2; image-only LMMS does not decode video.
+decord2==3.4.0

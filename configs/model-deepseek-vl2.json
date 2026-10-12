@@ -1,0 +1,10 @@
+{
+  "adapter": "deepseek_vl2",
+  "hardware": "cuda",
+  "path": "models/DeepSeek-VL2",
+  "model_code": ".cache/deepseek-vl2/upstream",
+  "model_code_revision": "ef9f91e2b6426536b83294c11742c27be66361b1",
+  "device": "cuda:0",
+  "dtype": "bfloat16",
+  "attn_implementation": "eager"
+}

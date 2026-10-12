@@ -19,7 +19,7 @@ from search.context import dense_root, search_root, hardware_adapter, require_st
 from search.run import quality_action
 from search.vision_token import candidate_ratios
 from search.worker import save_json
-from skills.vision_token import keep_count, validate_selection
+from skills.vision_token import geometry_keep_count, validate_selection
 
 LOCK_FDS = []
 
@@ -467,7 +467,8 @@ def execute(snap, destination, max_candidates=None):
                 continue
         if geometry is None:
             geometry = read(run("prepare", "preparation")["geometry"])
-        previous = tuple(row["rows"] * row["columns"] for row in geometry)
+        grid = snap["vision"]["selection"]["coverage_grid"]
+        previous = tuple(geometry_keep_count(row, 1, grid) for row in geometry)
         seen = {previous}
         failures = 0
         records = []
@@ -477,12 +478,7 @@ def execute(snap, destination, max_candidates=None):
         stop = "declared_range_exhausted"
         for ratio in candidate_ratios(snap["vision"]["search"]):
             physical = tuple(
-                keep_count(
-                    row["rows"],
-                    row["columns"],
-                    ratio,
-                    snap["vision"]["selection"]["coverage_grid"],
-                )
+                geometry_keep_count(row, ratio, grid)
                 for row in geometry
             )
             if physical in seen:

@@ -10,6 +10,7 @@ from search.stack import (
     discover_structured_pruning,
     execute,
     _recovery_neighbors,
+    _retain_attempt_diagnostics,
     _retain_evaluation_outputs,
     _run_lmms_gate,
     _score_token_benchmark_ready,
@@ -246,6 +247,38 @@ class StackContractTests(unittest.TestCase):
             retained = Path(probe["quality"]["outputs"]["dev"])
             self.assertEqual(json.loads(retained.read_text())["sample_id"], "one")
 
+    def test_stack_retry_keeps_each_attempt_log_timing_and_parent_metadata(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            candidate, attempt = root / "candidate", root / ".work/candidate"
+            for status in ("stack_runtime_blocked", "ready_for_lmms"):
+                attempt.mkdir(parents=True)
+                files = {
+                    "request.json": '{"operation":"stack_candidate"}',
+                    "probe.json": json.dumps({"status": status}),
+                    "worker.log": status,
+                    "benchmark/metrics.jsonl": status + " timing",
+                    "evidence/runtime.log": status + " startup",
+                    "artifact/manifest.json": '{"artifact_digest":"quantized-parent"}',
+                    "artifact/stack-parent.json": '{"recipe_digest":"physical"}',
+                    "artifact/model.safetensors": "weights are retained separately",
+                }
+                for name, value in files.items():
+                    path = attempt / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(value)
+                _retain_attempt_diagnostics(attempt, candidate)
+                shutil.rmtree(attempt)
+            for number, status in enumerate(("stack_runtime_blocked", "ready_for_lmms"), 1):
+                saved = candidate / "evidence" / f"attempt-{number}"
+                self.assertEqual((saved / "worker.log").read_text(), status)
+                self.assertEqual((saved / "benchmark/metrics.jsonl").read_text(), status + " timing")
+                self.assertEqual((saved / "evidence/runtime.log").read_text(), status + " startup")
+                self.assertEqual(json.loads((saved / "probe.json").read_text())["status"], status)
+                self.assertEqual(json.loads((saved / "artifact-metadata/stack-parent.json").read_text())["recipe_digest"], "physical")
+                self.assertFalse(list(saved.rglob("*.safetensors")))
+
     def test_candidate_identity_changes_for_each_physical_axis(self):
         common = dict(model_digest="m", sp={"recipe_digest": "sp"}, quantization={"manifest_digest": "q"}, token={"config_digest": "t"}, source_ids=())
         first = make_candidate(**common, token_keep_ratio=0.50)
@@ -336,6 +369,56 @@ class StackContractTests(unittest.TestCase):
         # Candidate identity canonicalises source IDs so receipts remain stable
         # regardless of transformation order.
         self.assertEqual(rows[0]["source_ids"], ["q", "sp-wide", "token-55"])
+
+    def test_token_exhaustion_policy_requires_explicit_paired_lmms_config(self):
+        config = json.loads(Path("configs/stack-internvl35.json").read_text())
+        config["token_recovery_exhaustion"] = "reuse_last_qualified"
+        validate_config(config)
+        for value in (True, None, [], "reuse_failed"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_config({**config, "token_recovery_exhaustion": value})
+        with self.assertRaises(ValueError):
+            validate_config({**config, "recovery_axes": ["wider_structured_pruning"]})
+        with self.assertRaises(ValueError):
+            validate_config({**config, "selection_policy": "strict", "lmms": {"enabled": False}})
+
+    def test_token_exhaustion_reuses_only_the_last_qualified_source(self):
+        import copy
+
+        token = {"candidate_id": "token-95", "config_digest": "t", "ratio": .95,
+                 "status": "completed", "quality": {"action": "pass"}, "fresh_evidence": True}
+        original = make_candidate(model_digest="m",
+            sp={"candidate_id": "sp-deep", "recipe_digest": "deep", "actual_depth": .5},
+            quantization={"candidate_id": "q", "manifest_digest": "q"},
+            token=token, token_keep_ratio=.95)
+        snap = {"config": {"recovery_axes": ["paired_structured_token_recovery"]},
+                "sources": {"structured_pruning": [original["structured_pruning"],
+                    {"candidate_id": "sp-wide", "recipe_digest": "wide", "actual_depth": .4},
+                    {"candidate_id": "sp-widest", "recipe_digest": "widest", "actual_depth": .3}],
+                    "vision_token": [token]}}
+        self.assertEqual(_recovery_neighbors(original, snap), [])
+        snap["config"]["token_recovery_exhaustion"] = "reuse_last_qualified"
+        first, = _recovery_neighbors(original, snap)
+        self.assertEqual(first["token_keep_ratio"], .95)
+        self.assertEqual(first["vision_token"], token)
+        self.assertEqual(first["quantization"], original["quantization"])
+        self.assertEqual(first["source_ids"], ["q", "sp-wide", "token-95"])
+        self.assertNotEqual(first["candidate_key"], original["candidate_key"])
+        self.assertEqual(first["recovery"]["strategy"], "wider_sp_reuse_last_token")
+        second, = _recovery_neighbors(first, snap)
+        self.assertEqual(second["structured_pruning"]["candidate_id"], "sp-widest")
+        self.assertEqual(_recovery_neighbors(second, snap), [])
+        for change in ({"status": "running"}, {"quality": {"action": "reject"}},
+                       {"fresh_evidence": False}, {"config_digest": "changed"}, {"ratio": .9}):
+            changed = copy.deepcopy(snap)
+            changed["sources"]["vision_token"] = [{**token, **change}]
+            with self.subTest(change=change):
+                self.assertEqual(_recovery_neighbors(original, changed), [])
+        # An available higher ratio still takes the normal paired step.
+        snap["sources"]["vision_token"].append({**token, "candidate_id": "token-98", "ratio": .98})
+        paired, = _recovery_neighbors(original, snap)
+        self.assertEqual(paired["token_keep_ratio"], .98)
+        self.assertEqual(paired["recovery"]["strategy"], "paired_structured_token_recovery")
 
     def test_pareto_frontier_does_not_use_scalar_speedup(self):
         rows = [
@@ -573,7 +656,8 @@ class StackContractTests(unittest.TestCase):
             model_digest="m",
             sp={"candidate_id": "sp-deep", "recipe_digest": "deep", "actual_depth": 0.5},
             quantization={"candidate_id": "q", "manifest_digest": "q"},
-            token={"candidate_id": "token-50", "config_digest": "t50", "ratio": 0.5},
+            token={"candidate_id": "token-50", "config_digest": "t50", "ratio": 0.5,
+                   "status": "completed", "quality": {"action": "pass"}},
             token_keep_ratio=0.5,
         )
         snap = {
@@ -584,12 +668,16 @@ class StackContractTests(unittest.TestCase):
                 "runtime": {"vllm_reload": False, "vllm_benchmark": False},
                 "quantization": {"worker_python": "python"},
                 "recovery_axes": ["paired_structured_token_recovery"],
+                "token_recovery_exhaustion": "reuse_last_qualified",
                 "lmms": {"enabled": True, "worker_python": "python", "baseline_root": "dense", "output_subdir": "lmms"},
             },
             "model": {"path": "model"}, "model_digest": "m", "evaluation": {}, "token_config": {"selection": {}},
-            "sources": {"structured_pruning": [initial["structured_pruning"]], "vision_token": [initial["vision_token"]]},
+            "sources": {"structured_pruning": [initial["structured_pruning"],
+                {"candidate_id": "sp-wide", "recipe_digest": "wide", "actual_depth": .4}],
+                "vision_token": [initial["vision_token"]]},
             "initial_candidates": [initial], "candidates": [initial], "status": "ready",
         }
+        self.assertEqual(len(_recovery_neighbors(initial, snap)), 1)
 
         def launch_candidate(request, attempt):
             attempt = Path(attempt)
@@ -621,11 +709,18 @@ class StackContractTests(unittest.TestCase):
         self.assertEqual(summary["stop_reason"], "blocked_preflight")
 
     def test_expanded_budget_resumes_neighbor_then_reports_ladder_exhaustion(self):
+        self._assert_expanded_budget_recovery(reuse_token=False)
+
+    def test_token_exhaustion_recovery_obeys_budget_and_reuses_completed_attempts(self):
+        self._assert_expanded_budget_recovery(reuse_token=True)
+
+    def _assert_expanded_budget_recovery(self, *, reuse_token):
         initial = make_candidate(
             model_digest="m",
             sp={"candidate_id": "sp-deep", "recipe_digest": "deep", "actual_depth": .5},
             quantization={"candidate_id": "q", "manifest_digest": "q"},
-            token={"candidate_id": "token-50", "config_digest": "t", "ratio": .5},
+            token={"candidate_id": "token-50", "config_digest": "t", "ratio": .5,
+                   "status": "completed", "quality": {"action": "pass"}},
             token_keep_ratio=.5,
         )
         snap = {
@@ -635,6 +730,7 @@ class StackContractTests(unittest.TestCase):
             "config": {
                 "device": 0, "limits": {"initial_candidates": 1, "total_candidates": 1},
                 "recovery_axes": ["paired_structured_token_recovery"],
+                "token_recovery_exhaustion": "reuse_last_qualified" if reuse_token else "stop",
                 "lmms": {"enabled": True},
             },
             "sources": {
@@ -644,7 +740,8 @@ class StackContractTests(unittest.TestCase):
                 ],
                 "vision_token": [
                     initial["vision_token"],
-                    {"candidate_id": "token-55", "config_digest": "t", "ratio": .55},
+                    *([] if reuse_token else [
+                        {"candidate_id": "token-55", "config_digest": "t", "ratio": .55}]),
                 ],
             },
             "initial_candidates": [initial], "candidates": [initial],
@@ -677,7 +774,12 @@ class StackContractTests(unittest.TestCase):
             snap["config"]["limits"]["total_candidates"] = 2
             expanded = execute("ignored.json", output=output)
             worker.assert_called_once()
-            self.assertEqual(worker.call_args.args[0]["candidate"]["token_keep_ratio"], .55)
+            recovered = worker.call_args.args[0]["candidate"]
+            self.assertEqual(recovered["token_keep_ratio"], .5 if reuse_token else .55)
+            self.assertEqual(recovered["structured_pruning"]["candidate_id"], "sp-wide")
+            if reuse_token:
+                self.assertEqual(recovered["vision_token"], initial["vision_token"])
+                self.assertEqual(recovered["recovery"]["strategy"], "wider_sp_reuse_last_token")
             self.assertTrue(expanded["results"][0]["reused"])
             self.assertEqual(expanded["candidate_count"], 2)
             self.assertEqual(expanded["stop_reason"], "recovery_ladder_exhausted")

@@ -400,6 +400,7 @@ def plan(config_path: str | Path = "configs/stack.json") -> dict[str, Any]:
         "source_counts": {key: len(value) for key, value in snap["sources"].items()},
         "candidate_count": snap["candidate_count"],
         "initial_candidates": compact,
+        "token_recovery_exhaustion": snap["config"].get("token_recovery_exhaustion", "stop"),
         "blockers": snap["blockers"],
         "output": str(_resolve(snap["config"]["output"])),
         "metrics_transferable": False,
@@ -449,9 +450,9 @@ def _write_vllm_comparison(destination: Path, selected: dict[str, Any]) -> None:
 def _recovery_neighbors(candidate: dict[str, Any], snap: dict[str, Any]) -> list[dict[str, Any]]:
     """Return bounded recovery neighbors after a Stack quality rejection.
 
-    ``paired_structured_token_recovery`` deliberately changes both quality
-    axes together.  This keeps the search fast by avoiding two independent
-    branches that would each require a fresh SP/GPTQ/Token evaluation.
+    Paired recovery changes both quality axes together. An explicit Token
+    exhaustion policy may retain the last qualified Token source while SP
+    widens; it never skips fresh composition or the full LMMS gate.
     """
 
     config = snap["config"]
@@ -500,6 +501,33 @@ def _recovery_neighbors(candidate: dict[str, Any], snap: dict[str, Any]) -> list
                 "to_token_keep_ratio": higher[0].get("ratio"),
             }
             return [paired]
+        if wider and not higher and config.get("token_recovery_exhaustion") == "reuse_last_qualified":
+            current_source = candidate.get("vision_token") or {}
+            last_token = next((row for row in token_sources
+                if row.get("ratio") == current_token
+                and row.get("candidate_id") == current_source.get("candidate_id")
+                and row.get("config_digest") == current_source.get("config_digest")
+                and row.get("status") in {"completed", "qualified", "pass"}
+                and row.get("fresh_evidence", True) is True
+                and _quality_pass(row.get("quality"))), None)
+            if last_token is not None:
+                fallback = make_candidate(
+                    model_digest=candidate["model_digest"],
+                    sp=wider[0], quantization=candidate.get("quantization"),
+                    token=last_token, token_keep_ratio=current_token,
+                    source_ids=(wider[0]["candidate_id"],
+                                (candidate.get("quantization") or {})["candidate_id"],
+                                last_token["candidate_id"]),
+                )
+                fallback["recovery"] = {
+                    "strategy": "wider_sp_reuse_last_token",
+                    "reason": "token_recovery_ladder_exhausted",
+                    "parent_candidate": candidate.get("candidate_id"),
+                    "from_sp": current_sp, "to_sp": wider[0]["candidate_id"],
+                    "from_token_keep_ratio": current_token, "to_token_keep_ratio": current_token,
+                    "reused_token_source": last_token["candidate_id"],
+                }
+                return [fallback]
         return result
     for axis in axes:
         if axis == "wider_structured_pruning" and current_sp:
@@ -568,6 +596,33 @@ def _recovery_neighbors(candidate: dict[str, Any], snap: dict[str, Any]) -> list
     return result
 
 
+def _retain_attempt_diagnostics(attempt: Path, candidate_dir: Path) -> None:
+    """Keep each retry's diagnostics before disposable Stack work is removed."""
+    history = candidate_dir / "evidence"
+    number = 1 + max((int(path.name.removeprefix("attempt-"))
+                      for path in history.glob("attempt-*")
+                      if path.name.removeprefix("attempt-").isdigit()), default=0)
+    retained = history / f"attempt-{number}"
+    for name in ("request.json", "worker.log", "probe.json", "result.json",
+                 "quality", "benchmark", "vllm-benchmark", "evidence"):
+        source = attempt / name
+        if not source.exists():
+            continue
+        retained.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, retained / name)
+        else:
+            shutil.copy2(source, retained / name)
+    for directory in ("parent", "artifact"):
+        for name in ("config.json", "manifest.json", "stack-parent.json",
+                     "precision-audit.json", "vision-quantization.json"):
+            source = attempt / directory / name
+            if source.is_file():
+                destination = retained / (directory + "-metadata")
+                destination.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination / name)
+
+
 def _retain_evaluation_outputs(attempt: Path, candidate_dir: Path, probe: dict[str, Any]) -> None:
     """Retain raw answers/timings before disposable Worker files are removed."""
     for name in ("quality", "benchmark"):
@@ -617,6 +672,8 @@ def _run_lmms_gate(
         "token_keep_ratio": candidate.get("token_keep_ratio"),
         "token_selection": snap["token_config"]["selection"],
     })
+    if settings.get("native_worker_python"):
+        descriptor["native_worker_python"] = str(_resolve(settings["native_worker_python"]))
     descriptor_path = candidate_dir / "lmms-model.json"
     worker_python = _resolve(settings.get("worker_python", ".venv-quant-gptqmodel/bin/python"))
     command = [
@@ -804,6 +861,9 @@ def execute(config_path: str | Path = "configs/stack.json", *, output: str | Pat
             return summary
         machine = hardware(snap["config"]["device"], snap["model"])
         work = destination / ".work"
+        for interrupted in sorted(work.glob("*")):
+            if interrupted.is_dir():
+                _retain_attempt_diagnostics(interrupted, destination / "candidates" / interrupted.name)
         shutil.rmtree(work, ignore_errors=True)
         rows = []
         pending = list(snap["initial_candidates"])
@@ -953,6 +1013,7 @@ def execute(config_path: str | Path = "configs/stack.json", *, output: str | Pat
             except Exception as error:  # noqa: BLE001
                 result = {"status": "failed", "error": f"{type(error).__name__}: {error}"}
             candidate_dir.mkdir(parents=True, exist_ok=True)
+            _retain_attempt_diagnostics(attempt, candidate_dir)
             probe_source = attempt / "probe.json"
             result_source = attempt / "result.json"
             durable_artifact = None

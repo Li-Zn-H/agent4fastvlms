@@ -37,6 +37,7 @@ class Adapter(ABC):
 
 
 class ModelAdapter(Adapter):
+    generation_includes_prompt = True
     model_types: tuple[str, ...] = ()
     # Stages must be explicitly implemented; missing declarations never fall back.
     stages: tuple[str, ...] = ()

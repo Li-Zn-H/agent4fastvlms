@@ -178,7 +178,7 @@ def _profiles(snap: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 def _copy_receipts(attempt: Path, candidate_dir: Path) -> None:
     candidate_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("probe.json", "result.json"):
+    for name in ("probe.json", "result.json", "request.json", "worker.log"):
         source = attempt / name
         if source.is_file():
             shutil.copy2(source, candidate_dir / name)

@@ -148,6 +148,46 @@ class PolicyTests(unittest.TestCase):
 
 
 class WorkerTests(unittest.TestCase):
+    def test_raw_evidence_survives_failed_attempt_cleanup_and_resume(self):
+        from search.quantization import _candidate
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            candidate = _candidate({"calibration": {"data": "heldout.jsonl", "limit": 2}}, {
+                "id": "gptq", "route": ROUTE_GPTQMODEL_W4A16, "bits": 4, "group_size": 128,
+            })
+            snap = {"config_path": "job.json", "model_path": "original-model",
+                    "model": {"path": "original-model"}, "evaluation": {}, "device": 0,
+                    "output": str(output), "candidates": [candidate]}
+
+            def worker(request, directory):
+                directory.mkdir(parents=True)
+                save_json(directory / "request.json", request)
+                (directory / "worker.log").write_text(directory.name)
+                (directory / "quality").mkdir()
+                (directory / "quality/dev.jsonl").write_text('{"sample_id":"a","answer":"yes"}\n')
+                (directory / "benchmark").mkdir()
+                save_json(directory / "benchmark/summary.json", {"elapsed_seconds": 2})
+                if directory.name == "attempt-1":
+                    raise RuntimeError("failed after saving raw outputs")
+                save_json(directory / "probe.json", {"status": "framework_ready"})
+                return {"status": "completed", "probe_status": "framework_ready"}
+
+            with (patch("search.quantization.snapshot", return_value=snap),
+                  patch("search.quantization._preflight", return_value={"ready_for_worker": True}),
+                  patch("search.quantization.hardware", return_value="CPU"),
+                  patch("search.quantization.launch", side_effect=worker)):
+                execute("job.json", output=output)
+                execute("job.json", output=output)
+            self.assertFalse((output / ".work").exists())
+            for attempt in ("attempt-1", "attempt-2"):
+                evidence = output / "candidates/gptq/evidence" / attempt
+                self.assertEqual((evidence / "worker.log").read_text(), attempt)
+                self.assertEqual(json.loads((evidence / "request.json").read_text())["model"],
+                                 {"path": "original-model", "device": "cuda:0"})
+                self.assertEqual(json.loads((evidence / "quality/dev.jsonl").read_text())["answer"], "yes")
+                self.assertEqual(json.loads((evidence / "benchmark/summary.json").read_text()),
+                                 {"elapsed_seconds": 2})
+
     def test_new_export_contract_block_overrides_old_qualified_receipt(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
@@ -299,7 +339,7 @@ class WorkerTests(unittest.TestCase):
                     path.name
                     for path in (output / "candidates/gptqmodel_w4a16").iterdir()
                 },
-                {"probe.json", "result.json"},
+                {"probe.json", "result.json", "evidence"},
             )
             self.assertFalse(list(output.glob("candidate-*/")))
 

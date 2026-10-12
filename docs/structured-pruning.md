@@ -55,6 +55,15 @@ configured step back/confirmation. Alignment to 128 does not require quality
 evaluation at every 128-channel width. Retain recipes and raw quality outputs,
 without per-candidate full checkpoint copies. Resume uses frozen job settings.
 
+The fixed step-back policy chooses the deepest admitted path point whose actual
+FFN removal does not exceed the current removal plus `initial_depth_step`.
+Discrete widths can make the achieved increment smaller than the configured
+step. DeepSeek-VL2, for example, keeps a common width across each layer's 72
+routed experts. One 128-channel routed width move removes about 0.27855 percentage
+points of its original decoder FFN parameters: 17 such moves remove 4.7354 points,
+whereas 18 exceed a five-point increment. Dense/shared moves have different costs;
+always report the actual physical parameter fraction from that model's recipe.
+
 The independent quality run does not time every full-model candidate.
 `search.pruning_screen` provides optional representative timing; final combined
 speed must still come from Stack and matched end-to-end benchmarking.

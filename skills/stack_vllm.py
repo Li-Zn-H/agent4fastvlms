@@ -27,6 +27,7 @@ _SHAPES = {
     "qwen3_vl": (36, 2560, 9728, STACK_ARCHITECTURE),
     "llava_onevision": (28, 3584, 18944, LLAVA_STACK_ARCHITECTURE),
     "llava": (32, 4096, 11008, LLAVA15_STACK_ARCHITECTURE),
+    "internvl_chat": (40, 5120, 17408, "A4FVLMSPQuantizedInternVLChatModel"),
 }
 _GROUP_SIZE = 128
 _VLLM_CLASSES: dict[str, type[Any]] = {}
@@ -42,9 +43,33 @@ def stack_widths(config: object) -> tuple[int, ...]:
     """Read and validate the physical per-layer width vector from HF config."""
 
     model_type = _value(config, "model_type", "qwen3_vl")
+    if model_type == "deepseek_vl_v2":
+        from skills.deepseek_vl2_artifact import STACK_ARCHITECTURE as deepseek_architecture
+        from skills.deepseek_vl2_pruning import dimensions, units
+        from skills.deepseek_vl2_vllm import layer_widths
+        dims = dimensions(_value(config, "language_config", _value(config, "text_config")))
+        domain = units(dims)
+        raw = _value(config, "a4fvlm_stack_widths")
+        if (not isinstance(raw, (list, tuple))
+                or _value(config, "architectures") != [deepseek_architecture]
+                or _value(config, "a4fvlm_stack_physical_compaction") is not True
+                or _value(config, "a4fvlm_stack_units") != domain
+                or not _value(config, "a4fvlm_stack_recipe_digest")):
+            raise ValueError("DeepSeek vLLM physical topology metadata is incomplete")
+        layer_widths({"language_config": dims, "a4fvlm_stack_widths": raw})
+        if not any(width < unit["original_width"] for width, unit in zip(raw, domain, strict=True)):
+            raise ValueError("DeepSeek physical Stack is still dense")
+        return tuple(raw)
     if model_type not in _SHAPES:
         raise ValueError(f"Unsupported Stack vLLM model type: {model_type}")
     layer_count, hidden_size, original_width, architecture = _SHAPES[model_type]
+    if model_type == "internvl_chat":
+        text = _value(config, "llm_config", _value(config, "text_config"))
+        decoder = _value(text, "model_type")
+        if decoder == "qwen2":
+            layer_count, hidden_size, original_width = 48, 5120, 13824
+        elif decoder != "qwen3":
+            raise ValueError("Unsupported native InternVL Stack decoder family")
     raw = _value(config, "a4fvlm_stack_widths")
     if not isinstance(raw, (list, tuple)) or len(raw) != layer_count:
         raise ValueError(f"Stack vLLM width vector must contain {layer_count} layers")
@@ -62,7 +87,7 @@ def stack_widths(config: object) -> tuple[int, ...]:
         raise ValueError("Stack vLLM artifact does not declare physical compaction")
     if _value(config, "architectures") != [architecture]:
         raise ValueError("Stack vLLM architecture does not match its adapter")
-    text_config = _value(config, "text_config")
+    text_config = _value(config, "text_config", _value(config, "llm_config"))
     if int(_value(text_config, "hidden_size", 0)) != hidden_size:
         raise ValueError("Stack vLLM hidden size drifted")
     if int(_value(text_config, "num_hidden_layers", 0)) != layer_count:
@@ -89,6 +114,19 @@ def validate_stack_artifact(artifact: str | Path) -> dict[str, Any]:
     parent = json.loads(parent_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     widths = stack_widths(config)
+    if config.get("model_type") == "deepseek_vl_v2":
+        from skills.deepseek_vl2_artifact import validate_quantized_bindings, audit_quantized_artifact
+        validate_quantized_bindings(root, config, manifest)
+        if audit_quantized_artifact(root, manifest)["status"] != "passed":
+            raise ValueError("DeepSeek physical Stack precision audit failed")
+    if config.get("model_type") == "internvl_chat":
+        from adapters import select_model
+        from skills.internvl35_artifact import validate_quantized_bindings
+        from skills.quantization_evidence import audit_gptq_export
+        select_model(config)
+        validate_quantized_bindings(root, config, manifest)
+        if audit_gptq_export(root, manifest)["status"] != "passed":
+            raise ValueError("InternVL physical Stack precision audit failed")
     if parent.get("schema") != "a4fvlm.stack-parent.v1":
         raise ValueError("Stack vLLM parent manifest schema is unsupported")
     architecture = config.get("architectures", [None])[0]
@@ -506,6 +544,39 @@ def prepare_vllm_artifact(
     root = Path(artifact)
     config = json.loads((root / "config.json").read_text(encoding="utf-8"))
     architectures = config.get("architectures") or []
+    if config.get("model_type") == "deepseek_vl_v2":
+        from skills.deepseek_vl2_artifact import validate_quantized_bindings, audit_quantized_artifact
+        manifest = json.loads((root / "manifest.json").read_text())
+        validate_quantized_bindings(root, config, manifest)
+        if audit_quantized_artifact(root, manifest)["status"] != "passed":
+            raise ValueError("DeepSeek vLLM artifact precision audit failed")
+        return {"custom_stack": config.get("a4fvlm_stack_widths") is not None,
+                "architecture": architectures[0], "model_type": "deepseek_vl2",
+                "worker_start_method": os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn"),
+                "widths": config.get("a4fvlm_stack_widths"),
+                "model_class_overrides": {architectures[0]:
+                    "skills.deepseek_vl2_vllm:A4FVLMDeepseekVLV2ForCausalLM"},
+                "vision_token": {"runtime": configured}}
+    if config.get("model_type") == "internvl_chat":
+        from adapters import select_model
+        from skills.internvl35_artifact import validate_quantized_bindings
+        native_adapter = select_model(config)
+        if config.get("a4fvlm_internvl_gptq") is not None:
+            from skills.quantization_evidence import audit_gptq_export
+            manifest = json.loads((root / "manifest.json").read_text())
+            validate_quantized_bindings(root, config, manifest)
+            if audit_gptq_export(root, manifest)["status"] != "passed":
+                raise ValueError("InternVL vLLM artifact precision audit failed")
+        # On the pinned InternVL host, fork stalled before weight loading;
+        # spawn completed loading and CUDA warmup in a clean engine process.
+        # This execution-only preparation is never called by the catalog.
+        start_method = os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
+        return {"custom_stack": config.get("a4fvlm_stack_widths") is not None,
+                "architecture": architectures[0], "model_type": native_adapter.id,
+                "worker_start_method": start_method,
+                "widths": config.get("a4fvlm_stack_widths"),
+                "model_class_overrides": {architectures[0]: "skills.internvl35_vllm:A4FVLMInternVLChatModel"},
+                "vision_token": {"runtime": configured}}
     if config.get("model_type") == "llava_onevision" and architectures == ["LlavaOnevisionForConditionalGeneration"]:
         return {"custom_stack": False, "architecture": architectures[0], "model_type": config["model_type"],
                 "model_class_overrides": {architectures[0]:

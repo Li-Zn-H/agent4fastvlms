@@ -1,0 +1,14 @@
+{
+  "model_id": "deepseek_vl2",
+  "output": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/pipeline",
+  "coordinator_python": ".venv-deepseek/bin/python",
+  "optimization_config": "configs/optimization-deepseek-vl2.json",
+  "token_output": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/search/vision-token/runner",
+  "structured_pruning_config": "configs/structured_pruning-deepseek-vl2.json",
+  "sp_probe_output": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/search/structured-pruning/hardware-probe",
+  "quantization_config": "configs/quantization-deepseek-vl2.json",
+  "stack_config": "configs/stack-deepseek-vl2.json",
+  "runtime_config": "configs/stack_runtime-deepseek-vl2.json",
+  "kv_config": "configs/stack_kv_cache-deepseek-vl2.json",
+  "serving_lmms_config": "configs/serving_lmms-deepseek-vl2.json"
+}

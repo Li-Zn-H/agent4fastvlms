@@ -1,9 +1,17 @@
 # Configuration
 
-The JSONs in this edition retain the two public model jobs and their dependencies.
+The JSONs retain four measured reference jobs and their dependencies.
 Historical single-candidate trials and standalone artifact descriptors are omitted.
-Parameter values are unchanged from the local experiments. Results, weights,
+Reference parameter values are unchanged from the local experiments. Results, weights,
 calibration and evaluation data are not bundled.
+
+The `*-internvl35.json` files have complete local execution evidence. Their
+selected result is explicitly below the quality target; final Runtime recovery
+was stopped at the user's request. See [scope and evidence](../docs/internvl-preparation.md).
+
+The `*-deepseek-vl2.json` files have complete native MoE/MLA execution evidence:
+97.2659% final five-task mean retention and 4.8167x matched end-to-end acceleration.
+See [integration and evidence](../docs/deepseek-vl2-preparation.md).
 
 ## Files and ownership
 
@@ -11,6 +19,8 @@ calibration and evaluation data are not bundled.
 | --- | --- | --- |
 | Qwen3-VL-4B | [pipeline.json](pipeline.json) | [serving.json](serving.json) |
 | LLaVA-1.5-7B | [pipeline-llava15.json](pipeline-llava15.json) | [serving-llava15.json](serving-llava15.json) |
+| InternVL3.5-14B | [pipeline-internvl35.json](pipeline-internvl35.json) | [serving-internvl35.json](serving-internvl35.json) |
+| DeepSeek-VL2 (full) | [pipeline-deepseek-vl2.json](pipeline-deepseek-vl2.json) | [serving-deepseek-vl2.json](serving-deepseek-vl2.json) |
 
 Unsuffixed jobs target Qwen. Each pipeline references model-specific jobs:
 

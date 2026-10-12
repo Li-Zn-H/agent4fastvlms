@@ -4,8 +4,9 @@ This project currently uses Qwen3-VL as its reference model. A new model must
 earn its own receipts before any Qwen3-VL result, recipe, artifact or speedup is
 used. Model migration is a protocol change, not a path substitution.
 Use [the Agent search guide](agent-search.md) for stage orchestration after
-checking the model contracts below. The local Qwen3-VL-4B,
-and LLaVA-1.5-7B CUDA paths have complete evidence; a backend accepting another
+checking the model contracts below. The local Qwen3-VL-4B, LLaVA-1.5-7B,
+InternVL3.5-14B and full DeepSeek-VL2 CUDA paths have complete execution
+evidence; a backend accepting another
 model does not establish its pipeline support.
 
 The [registration guide](registration.md) describes the existing `adapters/`

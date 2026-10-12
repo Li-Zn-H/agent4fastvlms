@@ -1,0 +1,5 @@
+# Serving/evaluation only; never install GPTQModel into this environment.
+-r requirements-lmms-internvl.txt
+vllm==0.26.0
+compressed-tensors==0.17.0
+ninja==1.13.2

@@ -1,0 +1,29 @@
+{
+  "parent_freeze": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/stack-runtime/final/runtime-freeze.json",
+  "output": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/stack-kv-cache",
+  "dense_benchmark": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/search/dense/benchmark/summary.json",
+  "device": 0,
+  "worker_python": ".venv-runtime-deepseek/bin/python",
+  "evaluation_config": "configs/evaluation-deepseek-vl2.json",
+  "vision_token_config": "configs/vision_token-deepseek-vl2.json",
+  "benchmark": {
+    "search_limit": 128,
+    "warmup": 5,
+    "repeats": 3,
+    "batch_sizes": [
+      1,
+      4,
+      8
+    ]
+  },
+  "candidates": [
+    {
+      "id": "kv-auto",
+      "kv_cache_dtype": "auto"
+    },
+    {
+      "id": "kv-fp8-e4m3",
+      "kv_cache_dtype": "fp8_e4m3"
+    }
+  ]
+}

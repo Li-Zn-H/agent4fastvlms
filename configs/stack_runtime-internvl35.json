@@ -1,0 +1,95 @@
+{
+  "parent_freeze": "results/model/internvl3_5_14b/rtx_pro6000/stack/final/stack-freeze.json",
+  "output": "results/model/internvl3_5_14b/rtx_pro6000/stack-runtime",
+  "dense_benchmark": "results/model/internvl3_5_14b/rtx_pro6000/search/dense/benchmark/summary.json",
+  "device": 0,
+  "worker_python": ".venv-runtime-internvl/bin/python",
+  "evaluation_config": "configs/evaluation-internvl35.json",
+  "vision_token_config": "configs/vision_token-internvl35.json",
+  "limits": {
+    "total_candidates": 7
+  },
+  "runtime": {
+    "vllm_gpu_memory_utilization": 0.8,
+    "vllm_max_model_len": 8192,
+    "enable_prefix_caching": false
+  },
+  "benchmark": {
+    "search_limit": 128,
+    "warmup": 5,
+    "repeats": 3,
+    "batch_size": 1
+  },
+  "candidates": [
+    {
+      "id": "baseline-auto-o0",
+      "runtime": {
+        "attention_backend": "auto",
+        "optimization_level": 0,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    },
+    {
+      "id": "compile-o1",
+      "runtime": {
+        "attention_backend": "auto",
+        "optimization_level": 1,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    },
+    {
+      "id": "baseline-auto-o2",
+      "runtime": {
+        "attention_backend": "auto",
+        "optimization_level": 2,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    },
+    {
+      "id": "qk-norm-rope-o2",
+      "runtime": {
+        "attention_backend": "auto",
+        "optimization_level": 2,
+        "qk_norm_rope_fusion": true,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    },
+    {
+      "id": "flash-attn",
+      "runtime": {
+        "attention_backend": "FLASH_ATTN",
+        "optimization_level": 2,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    },
+    {
+      "id": "flashinfer",
+      "runtime": {
+        "attention_backend": "FLASHINFER",
+        "optimization_level": 2,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": false,
+        "cudagraph_mm_encoder": false
+      }
+    },
+    {
+      "id": "mm-compile-o2",
+      "runtime": {
+        "attention_backend": "auto",
+        "optimization_level": 2,
+        "qk_norm_rope_fusion": false,
+        "compile_mm_encoder": true,
+        "cudagraph_mm_encoder": false
+      }
+    }
+  ]
+}

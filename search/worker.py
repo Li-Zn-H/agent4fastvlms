@@ -39,6 +39,8 @@ def _vllm_reload_subprocess(artifact_dir: Path, runtime: dict[str, Any]) -> dict
     VRAM snapshot and keeps backend-specific process state out of the Worker.
     """
 
+    from search.model import PROJECT_ROOT
+
     script = """
 import json
 import sys
@@ -52,7 +54,7 @@ adapter = prepare_vllm_artifact(artifact)
 kwargs = {"model": artifact, "trust_remote_code": True}
 if adapter.get("model_class_overrides"):
     kwargs["model_class_overrides"] = adapter["model_class_overrides"]
-if adapter.get("custom_stack"):
+if adapter.get("custom_stack") and not adapter.get("model_class_overrides"):
     # vLLM 0.26's V1 engine starts a fresh EngineCore process.  A registry
     # mutation in the launcher process alone is therefore insufficient; the
     # public model_class_overrides field re-registers this module in every
@@ -73,7 +75,8 @@ print("vllm_reload_ok", flush=True)
     environment = os.environ.copy()
     # ``sys.executable`` may be a symlink into uv's shared interpreter.  Use
     # the selected virtualenv prefix so its console scripts remain visible.
-    worker_bin = str(Path(sys.prefix) / "bin")
+    runtime_python = str(PROJECT_ROOT / runtime["runtime_python"]) if runtime.get("runtime_python") else sys.executable
+    worker_bin = str(Path(runtime_python).parent) if runtime.get("runtime_python") else str(Path(sys.prefix) / "bin")
     environment["PATH"] = worker_bin + os.pathsep + environment.get("PATH", "")
     # vLLM's optional FlashInfer sampler JIT invokes ninja.  A backend
     # environment may be intentionally minimal; keep the score-based Token
@@ -82,29 +85,29 @@ print("vllm_reload_ok", flush=True)
     if shutil.which("ninja", path=environment["PATH"]) is None:
         environment.setdefault("VLLM_USE_FLASHINFER_SAMPLER", "0")
     timeout = int(runtime.get("serve_timeout_seconds", 120))
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-B",
-            "-c",
-            script,
-            str(artifact_dir),
-            json.dumps(runtime, ensure_ascii=True),
-        ],
-        cwd=Path(__file__).resolve().parents[1],
-        env=environment,
-        text=True,
-        capture_output=True,
-        timeout=timeout,
-        check=False,
-    )
+    # Preserve startup output while the child is still running, including a
+    # timeout before model construction. Pipe capture hid these diagnostics
+    # until completion and discarded successful engine startup records.
+    evidence = artifact_dir.parent / "evidence"
+    evidence.mkdir(parents=True, exist_ok=True)
+    log_path = evidence / f"vllm-reload-{os.getpid()}-{time.time_ns()}.log"
+    print(f"vLLM reload log: {log_path}", flush=True)
+    with log_path.open("w", encoding="utf-8") as log:
+        result = subprocess.run(
+            [runtime_python, "-B", "-c", script, str(artifact_dir),
+             json.dumps(runtime, ensure_ascii=True)],
+            cwd=Path(__file__).resolve().parents[1],
+            env=environment, text=True, stdout=log, stderr=subprocess.STDOUT,
+            timeout=timeout, check=False,
+        )
+    output = log_path.read_text(encoding="utf-8", errors="replace")
     if result.returncode != 0:
-        details = (result.stderr or result.stdout or "").strip()
+        details = output.strip()
         raise RuntimeError(
             f"vLLM reload subprocess failed with exit code {result.returncode}: "
-            f"{details[-4000:]}"
+            f"{details[-4000:]} (full log: {log_path})"
         )
-    for line in (result.stdout or "").splitlines():
+    for line in output.splitlines():
         marker = "a4fvlm_stack_adapter="
         if line.startswith(marker):
             try:
@@ -143,7 +146,7 @@ def execute(request, destination):
         return run_pruning_probe(request)
     if operation == "structured_pruning_candidate":
         from search.run import evaluate_candidate
-        from skills.structured_pruning import audit_recipe
+        from skills.structured_pruning import audit_recipe, decoder_topology
 
         recipe = json.loads(Path(request["recipe"]).read_text())
         model, processor = load_model(
@@ -152,11 +155,11 @@ def execute(request, destination):
         handles = []
         mechanism = None
         observations = [
-            {"prefill_calls": 0, "decode_calls": 0} for _ in recipe["widths"]
+            {"prefill_calls": 0, "decode_calls": 0} for _ in decoder_topology(model)[1]
         ]
         try:
             mechanism = audit_recipe(model, recipe)
-            for index, layer in enumerate(model.model.language_model.layers):
+            for index, layer in enumerate(decoder_topology(model)[1]):
 
                 def observe(module, args, output, layer_index=index):
                     phase = (
@@ -266,6 +269,9 @@ def execute(request, destination):
 
 def run_pruning_probe(request):
     """Worker-only GPU work; no Dense model weights or quality generation."""
+    if request.get("model", {}).get("adapter") == "deepseek_vl2":
+        from search.deepseek_pruning_probe import run
+        return run(request)
     import torch
     import transformers
 
@@ -283,6 +289,13 @@ def run_pruning_probe(request):
         mlp_config = Qwen2Config
         mlp_class = Qwen2MLP
         default_dtype = "float16"
+    elif adapter_id == "internvl35":
+        from transformers import Qwen3Config
+        from transformers.models.qwen3.modeling_qwen3 import Qwen3MLP
+
+        mlp_config = Qwen3Config
+        mlp_class = Qwen3MLP
+        default_dtype = "bfloat16"
     elif adapter_id == "llava15":
         from transformers import LlamaConfig
         from transformers.models.llama.modeling_llama import LlamaMLP
@@ -931,6 +944,44 @@ def run_stack_candidate(request):
             del processor
 
 
+def _runtime_import_status(names, runtime):
+    """Import runtime dependencies in their configured isolated interpreter."""
+    import importlib
+    import importlib.metadata
+    from search.model import PROJECT_ROOT
+
+    if not names:
+        return {}
+    python = str((PROJECT_ROOT / runtime.get("runtime_python", sys.executable)).absolute())
+    if python != str(Path(sys.executable).absolute()):
+        script = (
+            "import json, sys\n"
+            "from search.worker import _runtime_import_status\n"
+            "print('a4fvlm_runtime_imports=' + json.dumps(_runtime_import_status(json.loads(sys.argv[1]), {})))\n"
+        )
+        environment = os.environ.copy()
+        environment["PATH"] = str(Path(python).parent) + os.pathsep + environment.get("PATH", "")
+        try:
+            result = subprocess.run([python, "-B", "-c", script, json.dumps(names)],
+                                    cwd=PROJECT_ROOT, env=environment, capture_output=True, text=True,
+                                    timeout=int(runtime.get("serve_timeout_seconds", 120)), check=True)
+            for line in reversed(result.stdout.splitlines()):
+                if line.startswith("a4fvlm_runtime_imports="):
+                    return json.loads(line.split("=", 1)[1])
+            raise RuntimeError("Runtime dependency process returned no import receipt")
+        except Exception as error:
+            return {name: {"available": False, "error": f"{type(error).__name__}: {error}"}
+                    for name in names}
+    status = {}
+    for name in names:
+        try:
+            importlib.import_module(name)
+            status[name] = {"available": True, "version": importlib.metadata.version(name)}
+        except Exception as error:
+            status[name] = {"available": False, "error": f"{type(error).__name__}: {error}"}
+    return status
+
+
 def run_quantization_framework_probe(request):
     """Validate one quantization candidate against the Dense Qwen3-VL model.
 
@@ -950,22 +1001,7 @@ def run_quantization_framework_probe(request):
     imports = candidate.get("imports", [])
     missing = [name for name in imports if importlib.util.find_spec(name) is None]
     runtime_imports = candidate.get("runtime_imports", [])
-    missing_runtime = [
-        name for name in runtime_imports if importlib.util.find_spec(name) is None
-    ]
-    runtime_status = {}
-    for name in runtime_imports:
-        try:
-            importlib.import_module(name)
-            runtime_status[name] = {
-                "available": True,
-                "version": importlib.metadata.version(name),
-            }
-        except Exception as error:
-            runtime_status[name] = {
-                "available": False,
-                "error": f"{type(error).__name__}: {error}",
-            }
+    runtime_status = _runtime_import_status(runtime_imports, request.get("runtime", {}))
     report = {
         "schema": "a4fvlm.quantization-probe.v1",
         "candidate": candidate["id"],
@@ -1147,6 +1183,11 @@ def run_quantization_candidate(request):
     try:
         from search.model import load_model
 
+        if (request.get("model", {}).get("adapter") == "deepseek_vl2"
+                and candidate.get("route") == "gptqmodel_w4a16"):
+            # Initialize backend imports before the full Dense model exists;
+            # dependency import frames must not retain its weights at reload.
+            importlib.import_module("gptqmodel")
         report["stages"]["prepare"] = {"status": "running"}
         model, processor = load_model(request["model"])
         try:
@@ -1209,14 +1250,17 @@ def run_quantization_candidate(request):
                     "report": str(destination / "probe.json"),
                 }
             artifact_dir = destination / "artifact"
-            export_result = export(
-                candidate=candidate,
-                model=request["model"],
-                processor=processor,
-                calibration=calibration,
-                output_dir=artifact_dir,
-                module_names=names,
-            )
+            export_options = dict(candidate=candidate, model=request["model"],
+                                  processor=processor, calibration=calibration,
+                                  output_dir=artifact_dir, module_names=names)
+            if request["model"].get("adapter") == "internvl35":
+                from skills.internvl35_quantization import export_multimodal_gptq
+                export_result = export_multimodal_gptq(**export_options, loaded_model=model)
+            elif request["model"].get("adapter") == "deepseek_vl2":
+                from skills.deepseek_vl2_quantization import export_multimodal_gptq
+                export_result = export_multimodal_gptq(**export_options, loaded_model=model)
+            else:
+                export_result = export(**export_options)
             # The adapter loads its own quantizer model.  Release the Dense
             # Transformers model before loading the exported artifact so the
             # reload gate measures the artifact rather than two checkpoints
@@ -1470,19 +1514,30 @@ async def _stream_vllm_request(engine, prompt_spec, sampling, request_id):
     from vllm.renderers import ChatParams
 
     started = perf_counter()
-    conversation = prompt_spec["conversation"]
-    mm_processor_kwargs = prompt_spec.get("mm_processor_kwargs")
-    _, engine_inputs = engine.renderer.render_chat(
-        [conversation],
-        ChatParams(
-            chat_template_kwargs={"add_generation_prompt": True},
-            mm_processor_kwargs=mm_processor_kwargs,
-        ),
-    )
+    if "native_prompt" in prompt_spec:
+        from search.serving import open_native_image
+        image = open_native_image(prompt_spec["image_path"])
+        try:
+            engine_inputs = engine.renderer.render_cmpl([{
+                "prompt": prompt_spec["native_prompt"], "multi_modal_data": {"image": image},
+                "multi_modal_uuids": {"image": request_id},
+            }])
+        finally:
+            image.close()
+    else:
+        conversation = prompt_spec["conversation"]
+        mm_processor_kwargs = prompt_spec.get("mm_processor_kwargs")
+        _, engine_inputs = engine.renderer.render_chat(
+            [conversation],
+            ChatParams(
+                chat_template_kwargs={"add_generation_prompt": True},
+                mm_processor_kwargs=mm_processor_kwargs,
+            ),
+        )
     engine_input = engine_inputs[0]
     prompt_token_ids = engine_input.get("prompt_token_ids", [])
     hf_config = getattr(engine.model_config, "hf_config", None)
-    image_token_id = getattr(hf_config, "image_token_id", getattr(hf_config, "image_token_index", None))
+    image_token_id = prompt_spec.get("image_token_id", getattr(hf_config, "image_token_id", getattr(hf_config, "image_token_index", None)))
     image_tokens = (
         sum(int(token) == int(image_token_id) for token in prompt_token_ids)
         if image_token_id is not None
@@ -1529,7 +1584,9 @@ async def _run_streaming_vllm_benchmark(
 
     if warmup:
         for start in range(0, warmup, batch_size):
-            await run_batch(prompts[start : start + batch_size], "warmup")
+            # Native image cache UUIDs use the request ID. Keep different
+            # warmup batches distinct just like measured batches below.
+            await run_batch(prompts[start : min(start + batch_size, warmup)], f"warmup-{start}")
     rounds = []
     all_latencies = []
     all_ttfts = []
@@ -1581,7 +1638,8 @@ async def _run_streaming_vllm_benchmark(
     )
 
 
-async def _run_async_vllm_engine(engine_args, prompts, sampling, warmup, repeats, batch_size, memory):
+async def _run_async_vllm_engine(engine_args, prompts, sampling, warmup, repeats, batch_size, memory,
+                                 *, runtime_evidence=None, runtime_settings=None):
     """Create and drive AsyncLLMEngine on one event loop."""
 
     from vllm import AsyncLLMEngine
@@ -1589,6 +1647,9 @@ async def _run_async_vllm_engine(engine_args, prompts, sampling, warmup, repeats
     engine = AsyncLLMEngine.from_engine_args(engine_args)
     try:
         await engine.check_health()
+        if runtime_evidence is not None:
+            from search.lmms_vllm_entry import runtime_receipt
+            runtime_evidence.update(runtime_receipt(engine.vllm_config, runtime_settings))
         memory.mark_baseline()
         return await _run_streaming_vllm_benchmark(
             engine=engine,
@@ -1604,10 +1665,18 @@ async def _run_async_vllm_engine(engine_args, prompts, sampling, warmup, repeats
 
 def run_quantization_vllm_benchmark(request):
     """Benchmark one model through vLLM in an isolated Worker process."""
+    from search.model import PROJECT_ROOT
 
     destination = Path(request["probe_output"])
-    destination.mkdir(parents=True, exist_ok=True)
     runtime = request.get("runtime", {})
+    if runtime.get("runtime_python"):
+        runtime_python = str((PROJECT_ROOT / runtime["runtime_python"]).absolute())
+        if runtime_python != str(Path(sys.executable).absolute()):
+            from search.optimize import _cuda_launch, hardware
+            child = {**request, "worker_python": runtime_python,
+                     "hardware": request.get("hardware") or hardware(request.get("device", 0), request.get("model"))}
+            return _cuda_launch(child, destination / "runtime-worker")
+    destination.mkdir(parents=True, exist_ok=True)
     report = {
         "schema": "a4fvlm.vllm-benchmark.v5",
         "model_role": request.get("model_role", "unknown"),
@@ -1667,11 +1736,30 @@ def run_quantization_vllm_benchmark(request):
             raise ValueError("vllm_benchmark_limit must be positive")
         samples = samples[:limit]
         prompts = []
+        native_processor = None
+        if adapter_id == "internvl35":
+            from adapters.internvl35_dense import load_processor as load_native_processor
+            header = json.loads((Path(request["model"]["path"]) / "config.json").read_text())
+            artifact = any(header.get(key) is not None for key in ("a4fvlm_stack_widths", "a4fvlm_internvl_gptq"))
+            native_processor = load_native_processor(
+                {**request["model"], "dtype": request["model"].get("dtype", "bfloat16")}, artifact=artifact)
+        elif adapter_id == "deepseek_vl2":
+            from adapters.deepseek_vl2_dense import load_processor as load_native_processor
+            # Runtime/Stack performance requests carry only the artifact path.
+            # Recover its bound native source revision from the export manifest.
+            manifest = json.loads((Path(request["model"]["path"]) / "manifest.json").read_text())
+            native_processor = load_native_processor({**manifest["model"], **request["model"]})
+            model_receipt = destination / "observed-model.json"
+            model_receipt.unlink(missing_ok=True)
+            os.environ["A4FVLM_VLLM_MODEL_RECEIPT"] = str(model_receipt.resolve())
         for sample in samples:
             image_path = (
                 media_root / sample["media"]["logical_path"]
             ).resolve()
             prompt_spec = {"conversation": chat_prompt(sample, str(image_path))}
+            if native_processor is not None:
+                prompt_spec = {"native_prompt": native_processor.unexpanded_prompt(sample["logical_question"]),
+                               "image_path": str(image_path), "image_token_id": native_processor.image_token_id}
             prompts.append(prompt_spec)
         if token_keep_ratio is not None:
             report["vision_token"] = {
@@ -1696,6 +1784,11 @@ def run_quantization_vllm_benchmark(request):
         }
         if generation.get("ignore_eos", False):
             sampling_kwargs["ignore_eos"] = True
+        elif adapter_id == "deepseek_vl2":
+            sampling_kwargs["stop_token_ids"] = [native_processor.tokenizer.eos_token_id]
+        elif native_processor is not None:
+            separator = native_processor.conversation_factory(native_processor.config.template).sep.strip()
+            sampling_kwargs["stop_token_ids"] = [native_processor.tokenizer.convert_tokens_to_ids(separator)]
         sampling = SamplingParams(**sampling_kwargs)
         llm_kwargs = {
             "model": str(request["model"]["path"]),
@@ -1703,6 +1796,8 @@ def run_quantization_vllm_benchmark(request):
             "trust_remote_code": True,
             "allowed_local_media_path": str(media_root.resolve()),
         }
+        if native_processor is not None:
+            llm_kwargs["generation_config"] = "vllm"
         if token_keep_ratio is not None and adapter_id == "qwen3_vl":
             # vLLM 0.26 exposes its multimodal-pruner switch through the
             # video_pruning_rate config field.  The custom Qwen3-VL class
@@ -1710,12 +1805,12 @@ def run_quantization_vllm_benchmark(request):
             # enables the shared mRoPE/position-rewrite path without changing
             # the image algorithm (the benchmark accepts still images only).
             llm_kwargs["video_pruning_rate"] = 1e-9
-        if adapter.get("custom_stack"):
+        if adapter.get("model_class_overrides"):
+            llm_kwargs["model_class_overrides"] = adapter["model_class_overrides"]
+        elif adapter.get("custom_stack"):
             llm_kwargs["model_class_overrides"] = {
                 adapter["architecture"]: "skills.stack_vllm:" + adapter["architecture"]
             }
-        elif adapter.get("model_class_overrides"):
-            llm_kwargs["model_class_overrides"] = adapter["model_class_overrides"]
         if runtime.get("vllm_gpu_memory_utilization") is not None:
             llm_kwargs["gpu_memory_utilization"] = float(
                 runtime["vllm_gpu_memory_utilization"]
@@ -1725,6 +1820,7 @@ def run_quantization_vllm_benchmark(request):
         from skills.stack_runtime import build_vllm_runtime_kwargs
 
         llm_kwargs.update(build_vllm_runtime_kwargs(runtime))
+        observations = {"runtime_evidence": {}, "runtime_settings": runtime} if adapter_id == "deepseek_vl2" else {}
         with _GpuMemorySampler() as memory:
             engine_args = AsyncEngineArgs(
                 **llm_kwargs,
@@ -1757,8 +1853,17 @@ def run_quantization_vllm_benchmark(request):
                     repeats,
                     batch_size,
                     memory,
+                    **observations,
                 )
             )
+        if adapter_id == "deepseek_vl2":
+            from search.deepseek_serving import validate_runtime_observation
+            header = json.loads((Path(request["model"]["path"]) / "config.json").read_text())
+            observed = json.loads(model_receipt.read_text())
+            validate_runtime_observation(header, observed, token_runtime if token_keep_ratio is not None else None,
+                                         runtime.get("kv_cache_dtype", "auto"))
+            report["observed_model"] = observed
+            report["effective_runtime"] = observations["runtime_evidence"]
         if token_keep_ratio is not None:
             image_tokens = [int(value) for value in all_image_tokens]
             if not image_tokens:

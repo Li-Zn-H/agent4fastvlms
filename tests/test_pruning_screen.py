@@ -62,6 +62,7 @@ class ScreenTests(unittest.TestCase):
         mlp = Mock()
         mlp.register_forward_hook.return_value = handle
         model = SimpleNamespace(
+            config=SimpleNamespace(text_config=None),
             model=SimpleNamespace(
                 language_model=SimpleNamespace(layers=[SimpleNamespace(mlp=mlp)])
             )

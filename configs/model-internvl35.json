@@ -1,0 +1,8 @@
+{
+  "adapter": "internvl35",
+  "hardware": "cuda",
+  "path": "models/InternVL3_5-14B",
+  "device": "cuda:0",
+  "dtype": "bfloat16",
+  "attn_implementation": "sdpa"
+}

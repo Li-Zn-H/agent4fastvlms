@@ -1,0 +1,12 @@
+# Isolated vLLM/runtime Worker; separate from the Transformers 4 native Worker.
+-r requirements-qwen3vl.txt
+vllm==0.26.0
+compressed-tensors==0.17.0
+accelerate==1.15.0
+timm==1.0.30
+einops==0.8.2
+sentencepiece==0.2.2
+lmms-eval==0.7.3
+datasets==5.1.0
+decord2==3.4.0
+ninja==1.13.2

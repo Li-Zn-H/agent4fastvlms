@@ -48,8 +48,10 @@ performance-only; Stack, Runtime and KV do not use Search/Dev quality screening.
 Independent Skills keep their own quality ladders. Stack starts with qualified
 independent sources and uses one paired neighbor on each complete LMMS quality
 failure: wider SP plus higher Token keep ratio. Its JSON owns the shared budget.
-`search.stack --execute` runs this loop; do not add parallel SP-only/Token-only
-recovery branches. See [Stack](stack.md#fast-search-and-lmms-recovery).
+An explicit `token_recovery_exhaustion: reuse_last_qualified` may retain the last
+qualified Token source when no higher ratio remains, while SP continues to widen.
+`search.stack --execute` runs this loop; do not add parallel recovery branches.
+See [Stack](stack.md#fast-search-and-lmms-recovery).
 
 Runtime and KV freezes are performance-ready handoffs. Final serving evaluates
 the selected profile first; valid below-target quality tries same-Runtime auto

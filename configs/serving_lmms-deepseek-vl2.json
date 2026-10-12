@@ -1,0 +1,39 @@
+{
+  "selection_policy": "strict",
+  "serving_state": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/stack-runtime/serving-state.json",
+  "kv_freeze": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/stack-kv-cache/final/kv-cache-freeze.json",
+  "output": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/stack-serving-lmms",
+  "worker_python": ".venv-runtime-deepseek/bin/python",
+  "device": 0,
+  "baseline_root": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/lmms/dense",
+  "minimum_retention": 0.95,
+  "smoke_samples_per_task": 2,
+  "fallback_runtime_candidates": [
+    "baseline-auto-o0",
+    "compile-o1",
+    "baseline-auto-o2"
+  ],
+  "tasks": [
+    {
+      "task": "chartqa",
+      "metric": "relaxed_overall,none"
+    },
+    {
+      "task": "mmstar",
+      "metric": "average,none"
+    },
+    {
+      "task": "textvqa_val",
+      "metric": "exact_match,none"
+    },
+    {
+      "task": "docvqa_val",
+      "metric": "anls,none"
+    },
+    {
+      "task": "pope",
+      "metric": "pope_f1_score,none"
+    }
+  ],
+  "minimum_model_len": 4096
+}

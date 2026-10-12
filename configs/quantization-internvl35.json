@@ -1,0 +1,40 @@
+{
+  "model_config": "configs/model-internvl35.json",
+  "evaluation_config": "configs/evaluation-internvl35.json",
+  "device": 0,
+  "output": "results/model/internvl3_5_14b/rtx_pro6000/quantization",
+  "calibration": {
+    "data": "data/evaluation/calibration-llava15-128.jsonl",
+    "media_root": "data/evaluation",
+    "limit": 128,
+    "purpose": "dev_disjoint_calibration"
+  },
+  "runtime": {
+    "runtime_python": ".venv-runtime-internvl/bin/python",
+    "clean_reload": true,
+    "vllm_reload": true,
+    "vllm_gpu_memory_utilization": 0.8,
+    "vllm_max_model_len": 8192,
+    "serve_timeout_seconds": 900,
+    "quantize": true,
+    "optimization_level": 0,
+    "compile_mm_encoder": false,
+    "cudagraph_mm_encoder": false,
+    "enable_prefix_caching": false,
+    "warmup": 5,
+    "repeats": 1
+  },
+  "candidates": [{
+    "id": "gptqmodel_w4a16_native_heldout",
+    "enabled": true,
+    "worker_python": ".venv-quant-internvl/bin/python",
+    "requirements": "requirements-quantization-internvl-gptqmodel.txt",
+    "route": "gptqmodel_w4a16",
+    "bits": 4,
+    "group_size": 128,
+    "scheme": "W4A16",
+    "mapper_precision": "bf16",
+    "calibration_required": true,
+    "vision_quantization": "internvl_multimodal_gptq_v1"
+  }]
+}

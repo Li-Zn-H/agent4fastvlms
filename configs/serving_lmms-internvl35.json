@@ -1,0 +1,40 @@
+{
+  "selection_policy": "best_effort",
+  "serving_state": "results/model/internvl3_5_14b/rtx_pro6000/stack-runtime/serving-state.json",
+  "kv_freeze": "results/model/internvl3_5_14b/rtx_pro6000/stack-kv-cache/final/kv-cache-freeze.json",
+  "output": "results/model/internvl3_5_14b/rtx_pro6000/stack-serving-lmms",
+  "worker_python": ".venv-runtime-internvl/bin/python",
+  "device": 0,
+  "baseline_root": "results/model/internvl3_5_14b/rtx_pro6000/lmms/dense",
+  "minimum_retention": 0.95,
+  "smoke_samples_per_task": 2,
+  "fallback_runtime_candidates": [
+    "baseline-auto-o0",
+    "compile-o1",
+    "baseline-auto-o2",
+    "flash-attn"
+  ],
+  "tasks": [
+    {
+      "task": "chartqa",
+      "metric": "relaxed_overall,none"
+    },
+    {
+      "task": "mmstar",
+      "metric": "average,none"
+    },
+    {
+      "task": "textvqa_val",
+      "metric": "exact_match,none"
+    },
+    {
+      "task": "docvqa_val",
+      "metric": "anls,none"
+    },
+    {
+      "task": "pope",
+      "metric": "pope_f1_score,none"
+    }
+  ],
+  "minimum_model_len": 4877
+}

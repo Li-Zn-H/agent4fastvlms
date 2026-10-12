@@ -113,7 +113,12 @@ def generate_outputs(
             if measure:
                 torch.cuda.synchronize(model.device)
                 generation_seconds = perf_counter() - generation_started
-            answer_ids = generated[:, inputs["input_ids"].shape[1] :]
+            # Native InternVL generates from inputs_embeds and returns only the
+            # suffix. Keep native chat/LMMS semantics; normalize decoding here.
+            answer_ids = (
+                generated[:, inputs["input_ids"].shape[1] :]
+                if adapter.generation_includes_prompt else generated
+            )
             text = processor.batch_decode(
                 answer_ids,
                 skip_special_tokens=True,

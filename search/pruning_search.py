@@ -71,16 +71,14 @@ def build_snapshot(
     validate_search(probe["config"])
     records = existing_measurements(PROJECT_ROOT / probe_output, probe["context"])
     measured = {shape_key(row) for row in records if complete_measurement(row)}
-    widths = sorted({row["width"] for row in probe["shapes"]}, reverse=True)
-    admitted = [
-        width
-        for width in widths
-        if all(
-            shape_key(row) in measured
-            for row in probe["shapes"]
-            if row["width"] == width
-        )
-    ]
+    def admitted_for(shapes):
+        return [width for width in sorted({row["width"] for row in shapes}, reverse=True)
+                if all(shape_key(row) in measured for row in shapes if row["width"] == width)]
+    if probe["model"].get("adapter") == "deepseek_vl2":
+        admitted = {kind: admitted_for([row for row in probe["shapes"] if row["kind"] == kind])
+                    for kind in probe["context"]["original_widths"]}
+    else:
+        admitted = admitted_for(probe["shapes"])
     dimensions = probe["context"]["dimensions"]
     scores = load_calibration(
         PROJECT_ROOT / probe["config"]["calibration"]["source"], dimensions
@@ -123,7 +121,13 @@ def extend_snapshot(snap, previous):
     for key in ("calibration", "selection", "allocation", "search"):
         if snap["config"][key] != old["config"][key]:
             raise ValueError(f"Extension changes {key}")
-    if min(snap["admitted_widths"]) >= min(old["admitted_widths"]):
+    def expands(new, previous):
+        if isinstance(new, dict):
+            return (set(new) == set(previous)
+                    and all(set(previous[k]).issubset(new[k]) for k in previous)
+                    and any(min(new[k]) < min(previous[k]) for k in previous))
+        return min(new) < min(previous)
+    if not expands(snap["admitted_widths"], old["admitted_widths"]):
         raise ValueError("Extension needs newly admitted narrower widths")
     scores = load_calibration(
         PROJECT_ROOT / snap["config"]["calibration"]["source"], snap["dimensions"]

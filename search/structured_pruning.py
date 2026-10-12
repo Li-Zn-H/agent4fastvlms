@@ -81,7 +81,12 @@ def snapshot(config_path, model_path, evaluation_path, device) -> dict[str, Any]
     )
     require_stages(model, ("sp",), device=device)
     validate_result_scope(model, evaluation)
-    text_config = read(PROJECT_ROOT / model["path"] / "config.json")["text_config"]
+    if model.get("adapter") == "deepseek_vl2":
+        from search.deepseek_pruning_probe import snapshot as moe_snapshot
+        return moe_snapshot(config, model, evaluation, device)
+    text_config = read(PROJECT_ROOT / model["path"] / "config.json")[
+        "llm_config" if model.get("adapter") == "internvl35" else "text_config"
+    ]
     if model.get("adapter") == "llava15":
         from adapters.llava15 import Llava15Adapter
 
@@ -103,6 +108,7 @@ def snapshot(config_path, model_path, evaluation_path, device) -> dict[str, Any]
     context = {
         "device": device,
         "backend": (
+            "transformers_qwen3_text_mlp_eager" if model.get("adapter") == "internvl35" else
             "transformers_llama_text_mlp_eager" if model.get("adapter") == "llava15" else
             "transformers_qwen2_text_mlp_eager"
             if model.get("adapter") == "llava_onevision"
@@ -118,7 +124,7 @@ def snapshot(config_path, model_path, evaluation_path, device) -> dict[str, Any]
     # Preserve the established Qwen receipt context byte-for-byte so complete
     # probes remain reusable. LLaVA needs an explicit family marker because it
     # uses the Qwen2 MLP implementation and FP16 route.
-    if model.get("adapter") in {"llava_onevision", "llava15"}:
+    if model.get("adapter") in {"llava_onevision", "llava15", "internvl35"}:
         context["model_adapter"] = model["adapter"]
     shapes = [
         {"phase": phase, "input_tokens": length, "width": width}
@@ -139,6 +145,8 @@ def snapshot(config_path, model_path, evaluation_path, device) -> dict[str, Any]
 
 
 def shape_key(row):
+    if "kind" in row or "kernel" in row:
+        return row["kind"], row["kernel"], row["phase"], row["input_tokens"], row["width"]
     return row["phase"], row["input_tokens"], row["width"]
 
 
@@ -147,6 +155,7 @@ def complete_measurement(row):
     return (
         row.get("status") == "measured"
         and row.get("finite_output") is True
+        and ("kernel" not in row or row.get("reference_checked") is True)
         and len(values) == row.get("measurement_iterations")
         and bool(values)
         and all(
@@ -174,9 +183,10 @@ def summarize(snap, records) -> dict[str, Any]:
     requested = {shape_key(shape) for shape in snap["shapes"]}
     latest = {shape_key(row): row for row in records if shape_key(row) in requested}
     dense = {
-        key[:2]: row
+        key[:-1]: row
         for key, row in latest.items()
-        if row["width"] == snap["context"]["dimensions"]["intermediate_size"]
+        if row["width"] == (snap["context"]["original_widths"][row["kind"]]
+                            if "kind" in row else snap["context"]["dimensions"]["intermediate_size"])
         and complete_measurement(row)
     }
     rows = []
@@ -186,7 +196,7 @@ def summarize(snap, records) -> dict[str, Any]:
             rows.append({**shape, "status": "pending"})
             continue
         row = {key: value for key, value in record.items() if key != "milliseconds"}
-        control = dense.get(shape_key(shape)[:2])
+        control = dense.get(shape_key(shape)[:-1])
         if complete_measurement(record):
             row["median_ms"] = statistics.median(record["milliseconds"])
             row["speedup_vs_dense_width"] = (
@@ -224,6 +234,9 @@ def execute(snap, output):
                     "shapes_to_measure": missing,
                     "probe_output": str(output),
                 }
+                worker_python = snap["config"]["hardware_probe"].get("worker_python")
+                if worker_python:
+                    request["worker_python"] = str(PROJECT_ROOT / worker_python)
                 attempt = 1
                 while (output / f"attempt-{attempt}").exists():
                     attempt += 1

@@ -1,0 +1,7 @@
+{
+  "model_config": "configs/model-internvl35.json",
+  "evaluation_config": "configs/evaluation-internvl35.json",
+  "vision_token_config": "configs/vision_token-internvl35.json",
+  "device": 0,
+  "worker_python": ".venv-internvl/bin/python"
+}

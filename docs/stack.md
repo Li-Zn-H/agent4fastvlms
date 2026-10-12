@@ -13,13 +13,23 @@ It has its own measured quality and speed; independent gains are never multiplie
 5. On a valid complete quality result below 95%, try the next wider SP recipe and
    next higher Token keep ratio together. Repeat within the shared JSON budget.
 
+The default `token_recovery_exhaustion: stop` ends paired recovery when Token
+has no higher qualified ratio. An explicitly configured
+`token_recovery_exhaustion: reuse_last_qualified` instead retains that last
+qualified Token source and tries the next wider SP recipe. An available higher
+Token ratio still takes priority. This fallback requires native LMMS, consumes
+the same candidate budget and records `wider_sp_reuse_last_token` in the recovery
+receipt. Every changed SP Parent is freshly quantized and receives new mechanism,
+timing and full LMMS evidence. Failed or partial Token sources cannot be reused.
+
 `search.stack --execute` owns this closed loop. Stack and later stages never
 run Search/Dev quality screening. The 128-input timing workload remains a
 performance benchmark. Failed execution and API/preflight blocks stop the loop;
 they must not trigger quality recovery or enter best-candidate selection.
 
-`candidate_budget_exhausted` means the budget is full and an unseen paired
-neighbor remains. `recovery_ladder_exhausted` means no paired neighbor exists.
+`candidate_budget_exhausted` means the budget is full and an unseen allowed
+neighbor remains. `recovery_ladder_exhausted` means no allowed recovery neighbor
+exists, including the last-Token fallback when explicitly enabled.
 Keep those outcomes distinct and preserve measurements for rejected candidates.
 
 ## Implementation roadmap

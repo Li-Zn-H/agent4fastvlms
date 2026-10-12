@@ -79,25 +79,46 @@ def pack_gptq_task(task):
     # The writer uses standard GPTQ-v1, matching vLLM and the decoder export.
     convert_gptq_v2_to_v1_format_module(packed, config)
     tensors = {key: value.detach().cpu().contiguous() for key, value in packed.state_dict().items()}
-    # Independently unpack the portable format to catch a wrong zero convention
-    # before a numerically finite but incorrect checkpoint can be exported.
-    shifts = torch.arange(8, dtype=torch.int64) * 4
-    codes = ((tensors["qweight"].long()[:, None, :] >> shifts[None, :, None]) & 15).reshape(
-        linear.in_features, linear.out_features)
-    zero_codes = ((tensors["qzeros"].long()[:, :, None] >> shifts[None, None, :]) & 15).reshape(
-        -1, linear.out_features) + 1
-    group = tensors["g_idx"].long()
-    unpacked = (tensors["scales"].float()[group] * (codes - zero_codes[group])).T
-    reference = weight.detach().cpu().float()
-    torch.testing.assert_close(unpacked, reference, rtol=0.002, atol=0.002)
+    packing_error = _validate_gptq_packing(tensors, weight, scales, zeros, indices)
     report = {"method": "gptq_hessian", "bits": config.bits,
               "group_size": config.group_size, "samples": int(samples),
               "seconds": float(seconds), "average_loss": float(loss),
               "damp_percent": float(damp), "fallback": None,
               "in_features": linear.in_features, "out_features": linear.out_features,
-              "packing_max_abs_error": float((unpacked-reference).abs().max())}
+              "packing_max_abs_error": packing_error,
+              "packing_validation": "exact_codes_zeros_groups_and_fp32_dequantization"}
     task.free()
     return tensors, report
+
+
+def _validate_gptq_packing(tensors, weight, scales, zeros, indices):
+    """Check exact integer packing, separating solver rounding from storage."""
+    import torch
+
+    # GPTQ returns Q rounded to the source weight dtype, but scales remain
+    # FP32. Comparing ideal dequantization with BF16 Q under an FP16 tolerance
+    # incorrectly rejects valid large weights. Verify the integer codes and
+    # BF16/FP16 solver roundtrip exactly, then audit scale-storage error against
+    # the FP32 quantization grid using the original numeric tolerance.
+    shifts = torch.arange(8, dtype=torch.int64) * 4
+    codes = ((tensors["qweight"].long()[:, None, :] >> shifts[None, :, None]) & 15).reshape(
+        weight.shape[1], weight.shape[0])
+    zero_codes = ((tensors["qzeros"].long()[:, :, None] >> shifts[None, None, :]) & 15).reshape(
+        -1, weight.shape[0]) + 1
+    group = tensors["g_idx"].long()
+    source_scales = scales.detach().cpu().float().T.contiguous()
+    source_zeros = zeros.detach().cpu().float().T.contiguous()
+    torch.testing.assert_close(group, indices.detach().cpu().long(), rtol=0, atol=0)
+    torch.testing.assert_close(zero_codes, source_zeros.long(), rtol=0, atol=0)
+    torch.testing.assert_close(tensors["scales"], source_scales.to(tensors["scales"].dtype), rtol=0, atol=0)
+    rounded_weight = weight.detach().cpu()
+    expected_codes = torch.round(rounded_weight.float().T / source_scales[group] + source_zeros[group]).long()
+    torch.testing.assert_close(codes, expected_codes, rtol=0, atol=0)
+    reference = (source_scales[group] * (codes - source_zeros[group])).T
+    torch.testing.assert_close(reference.to(rounded_weight.dtype), rounded_weight, rtol=0, atol=0)
+    unpacked = (tensors["scales"].float()[group] * (codes - zero_codes[group])).T
+    torch.testing.assert_close(unpacked, reference, rtol=0.002, atol=0.002)
+    return float((unpacked-reference).abs().max())
 
 
 def export_visual_completion(*, source, destination, processor, calibration, model, candidate):

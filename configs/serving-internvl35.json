@@ -1,0 +1,12 @@
+{
+  "freeze": "results/model/internvl3_5_14b/rtx_pro6000/stack-serving-lmms/final/serving-freeze.json",
+  "output": "results/model/internvl3_5_14b/rtx_pro6000/serving-use",
+  "device": 0,
+  "dense_model_config": "configs/model-internvl35.json",
+  "dense_worker_python": ".venv-internvl/bin/python",
+  "evaluation_config": "configs/evaluation-internvl35.json",
+  "benchmark": {
+    "warmup": 5,
+    "repeats": 3
+  }
+}

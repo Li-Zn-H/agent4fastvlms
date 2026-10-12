@@ -32,6 +32,30 @@ def export_pruned_gptqmodel(
 
     if candidate.get("route") != "gptqmodel_w4a16":
         raise StackAdapterError("Only GPTQModel W4A16 has a Stack adapter")
+    if model.get("adapter") == "deepseek_vl2":
+        from skills.deepseek_vl2_artifact import read_parent
+        from skills.deepseek_vl2_quantization import export_multimodal_gptq
+        _, _, parent = read_parent(parent_dir)
+        if parent.get("recipe_digest") != recipe_digest:
+            raise StackAdapterError("DeepSeek physical parent differs from selected recipe")
+        importlib.import_module("gptqmodel")
+        return export_multimodal_gptq(candidate=candidate.get("candidate_config", candidate),
+                                      model={**model, "path": str(parent_dir)}, processor=processor,
+                                      calibration=calibration, output_dir=output_dir,
+                                      module_names=module_names)
+    if model.get("adapter") == "internvl35":
+        from skills.internvl35_quantization import export_multimodal_gptq
+        parent = json.loads((Path(parent_dir) / "stack-parent.json").read_text())
+        if parent.get("recipe_digest") != recipe_digest:
+            raise StackAdapterError("InternVL physical parent differs from selected recipe")
+        # Backend initialization can retain dependency import frames. Complete
+        # it before entering the exporter frame that owns the physical model,
+        # so releasing that model really frees its GPU weights before reload.
+        importlib.import_module("gptqmodel")
+        return export_multimodal_gptq(candidate=candidate.get("candidate_config", candidate),
+                                      model={**model, "path": str(parent_dir)}, processor=processor,
+                                      calibration=calibration, output_dir=output_dir,
+                                      module_names=module_names)
     parent = Path(parent_dir)
     model_adapter = model.get("adapter", "qwen3_vl")
     padded_vision = (model_adapter == "llava_onevision"

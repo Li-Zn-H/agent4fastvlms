@@ -1,0 +1,112 @@
+{
+  "selection_policy": "strict",
+  "model_config": "configs/model-deepseek-vl2.json",
+  "evaluation_config": "configs/evaluation-deepseek-vl2.json",
+  "structured_pruning_root": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/search/structured-pruning/runner",
+  "quantization_root": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/quantization",
+  "vision_token_root": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/search/vision-token",
+  "vision_token_config": "configs/vision_token-deepseek-vl2.json",
+  "output": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/stack",
+  "device": 0,
+  "transformation_order": [
+    "structured_pruning",
+    "quantization",
+    "vision_token"
+  ],
+  "limits": {
+    "initial_candidates": 1,
+    "total_candidates": 10
+  },
+  "quantization": {
+    "route": "gptqmodel_w4a16",
+    "worker_python": ".venv-quant-deepseek/bin/python",
+    "calibration": {
+      "data": "data/evaluation/calibration-llava15-128.jsonl",
+      "media_root": "data/evaluation",
+      "limit": 128,
+      "purpose": "stack_fresh_requantization"
+    },
+    "runtime": {
+      "quantize": true,
+      "clean_reload": true,
+      "vllm_reload": false,
+      "runtime_python": ".venv-runtime-deepseek/bin/python"
+    }
+  },
+  "token_keep_ratios": [
+    0.1,
+    0.15,
+    0.2,
+    0.25,
+    0.3,
+    0.35,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.65,
+    0.7,
+    0.75,
+    0.8,
+    0.85,
+    0.9,
+    0.95
+  ],
+  "recovery_axes": [
+    "paired_structured_token_recovery"
+  ],
+  "token_recovery_exhaustion": "reuse_last_qualified",
+  "runtime": {
+    "runtime_python": ".venv-runtime-deepseek/bin/python",
+    "quantize": true,
+    "transformers_reload": true,
+    "vllm_reload": true,
+    "vllm_benchmark": true,
+    "vllm_gpu_memory_utilization": 0.8,
+    "vllm_max_model_len": 4096,
+    "optimization_level": 0,
+    "compile_mm_encoder": false,
+    "cudagraph_mm_encoder": false,
+    "enable_prefix_caching": false,
+    "vllm_benchmark_limit": 128,
+    "vllm_benchmark_warmup": 5,
+    "vllm_benchmark_repeats": 1,
+    "vllm_benchmark_batch_size": 1,
+    "benchmark": true,
+    "warmup": 5,
+    "repeats": 1
+  },
+  "require_fresh_evidence": true,
+  "lmms": {
+    "enabled": true,
+    "smoke_samples_per_task": 2,
+    "worker_python": ".venv-deepseek/bin/python",
+    "native_worker_python": ".venv-quant-deepseek/bin/python",
+    "baseline_root": "results/model/deepseek_vl2/rtx_pro6000_gpu072a4781/lmms/dense",
+    "minimum_retention": 0.95,
+    "output_subdir": "lmms",
+    "tasks": [
+      {
+        "task": "chartqa",
+        "metric": "relaxed_overall,none"
+      },
+      {
+        "task": "mmstar",
+        "metric": "average,none"
+      },
+      {
+        "task": "textvqa_val",
+        "metric": "exact_match,none"
+      },
+      {
+        "task": "docvqa_val",
+        "metric": "anls,none"
+      },
+      {
+        "task": "pope",
+        "metric": "pope_f1_score,none"
+      }
+    ]
+  }
+}

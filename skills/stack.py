@@ -72,6 +72,15 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("Stack recovery_axes contains an unsupported axis")
     if len(set(recovery)) != len(recovery):
         raise ValueError("Stack recovery_axes must not contain duplicates")
+    token_exhaustion = config.get("token_recovery_exhaustion", "stop")
+    if token_exhaustion not in ("stop", "reuse_last_qualified"):
+        raise ValueError("Stack token_recovery_exhaustion must be stop or reuse_last_qualified")
+    if token_exhaustion == "reuse_last_qualified" and (
+        "paired_structured_token_recovery" not in recovery
+        or not isinstance(config.get("lmms"), dict)
+        or config["lmms"].get("enabled") is not True
+    ):
+        raise ValueError("Token exhaustion fallback requires paired recovery and complete native LMMS")
     if not isinstance(config.get("require_fresh_evidence", True), bool):
         raise ValueError("require_fresh_evidence must be boolean")
     lmms = config.get("lmms", {})

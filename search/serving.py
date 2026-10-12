@@ -95,7 +95,14 @@ def snapshot(config_path, *, benchmark=False, image=None, prompt=None):
     freeze, saved = load_freeze(config["freeze"])
     dense = read(resolve(config["dense_model_config"]))
     evaluation = read(resolve(config["evaluation_config"]))
-    eos = read(resolve(dense["path"]) / "generation_config.json")["eos_token_id"]
+    if dense.get("adapter") == "internvl35":
+        # The native composite generation_config has no EOS field. The model's
+        # Qwen3 EOS is checked against the original chat separator by the Worker.
+        eos = read(resolve(dense["path"]) / "config.json")["llm_config"]["eos_token_id"]
+    elif dense.get("adapter") == "deepseek_vl2":
+        eos = read(resolve(dense["path"]) / "config.json")["language_config"]["eos_token_id"]
+    else:
+        eos = read(resolve(dense["path"]) / "generation_config.json")["eos_token_id"]
     options = generation_options(evaluation["generation"], eos)
     if config["device"] not in (0, 1) or type(config["device"]) is not int:
         raise ValueError("device must be 0 or 1")
@@ -296,7 +303,14 @@ def worker(request, output):
     if snapshot(request["config_path"], benchmark=snap["mode"] == "benchmark",
                 image=request.get("image"), prompt=request.get("prompt")) != snap:
         raise ValueError("Serving inputs changed before Worker startup")
-    session = Session(snap, backend, output)
+    if snap["model"].get("adapter") == "internvl35":
+        from search.internvl_serving import InternVLSession
+        session = InternVLSession(snap, backend, output)
+    elif snap["model"].get("adapter") == "deepseek_vl2":
+        from search.deepseek_serving import DeepSeekSession
+        session = DeepSeekSession(snap, backend, output)
+    else:
+        session = Session(snap, backend, output)
     for item in snap["requests"][:snap["warmup"]]:
         session.generate(item)
     rows = []
@@ -340,7 +354,7 @@ def complete_output(directory, snap, backend):
         for row in rows:
             mechanism = row.get("token_mechanism") or {}
             images = mechanism.get("images", [])
-            if snap["model"].get("adapter", "qwen3_vl") in {"llava_onevision", "llava15"}:
+            if snap["model"].get("adapter", "qwen3_vl") in {"llava_onevision", "llava15", "internvl35", "deepseek_vl2"}:
                 positions_valid = all(i.get("position_type") == "1d_compacted"
                                       and i.get("positions_after") == i.get("image_tokens_after")
                                       for i in images)

@@ -1,0 +1,6 @@
+-r requirements-deepseek-vl2.txt
+lmms-eval==0.7.3
+datasets==4.4.2
+sentence-transformers==3.4.1
+peft==0.13.2
+decord2==3.4.0

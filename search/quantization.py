@@ -30,6 +30,7 @@ _BENCHMARK_ONLY_RUNTIME_KEYS = {
 # Deployment controls do not change exported weights, but MUST remain in the
 # receipt identity. Only an authenticated export may use the narrower identity.
 _DEPLOYMENT_ONLY_RUNTIME_KEYS = {
+    "runtime_python",
     "clean_reload",
     "vllm_reload",
     "serve_timeout_seconds",
@@ -103,6 +104,11 @@ def _worker_python(candidate: dict[str, Any]) -> str | None:
     if not value:
         return None
     return str(_resolve(value))
+
+
+def _runtime_python(candidate: dict[str, Any]) -> str | None:
+    value = candidate.get("runtime_config", {}).get("runtime_python")
+    return str(_resolve(value)) if value else _worker_python(candidate)
 
 
 def _module_available(name: str, worker_python: str | None) -> bool:
@@ -350,9 +356,12 @@ def snapshot(config_path: str | Path) -> dict[str, Any]:
 def _preflight(snap: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     imports = candidate["imports"]
     worker_python = _worker_python(candidate)
+    runtime_python = _runtime_python(candidate)
     missing_environment = []
     if worker_python and not Path(worker_python).is_file():
         missing_environment.append(worker_python)
+    if runtime_python and runtime_python != worker_python and not Path(runtime_python).is_file():
+        missing_environment.append(runtime_python)
     missing = [
         name
         for name in imports
@@ -362,7 +371,7 @@ def _preflight(snap: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any
     missing_runtime = [
         name
         for name in runtime_imports
-        if not missing_environment and not _module_available(name, worker_python)
+        if not missing_environment and not _module_available(name, runtime_python)
     ]
     calibration = candidate.get("calibration", {})
     calibration_path = (
@@ -385,12 +394,16 @@ def _preflight(snap: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any
         candidate.get("runtime_config", {}).get("quantize", False)
         or candidate.get("runtime_config", {}).get("vllm_reload", False)
     )
-    dependency_check = _dependency_preflight(
-        candidate, worker_python, runtime_required
-    )
+    split_runtime = runtime_python != worker_python
+    dependency_check = _dependency_preflight(candidate, worker_python, runtime_required and not split_runtime)
+    runtime_dependency_check = (_dependency_preflight(
+        {"imports": runtime_imports}, runtime_python, False
+    ) if split_runtime and runtime_required else None)
     dependency_blocked = bool(
         dependency_check["probe_error"]
         or (runtime_required and dependency_check["dependency_conflicts"])
+        or (runtime_dependency_check and (runtime_dependency_check["probe_error"]
+                                         or runtime_dependency_check["dependency_conflicts"]))
     )
     architecture_check = None
     artifact_audit = None
@@ -417,6 +430,8 @@ def _preflight(snap: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any
         "route": candidate["route"],
         "framework": candidate["framework"],
         "worker_python": worker_python,
+        "runtime_python": runtime_python,
+        "runtime_dependency_check": runtime_dependency_check,
         "missing_environment": missing_environment,
         "runtime": candidate["runtime"],
         "missing_imports": missing,
@@ -447,18 +462,39 @@ def _candidate_dir(destination: Path, candidate_id: str) -> Path:
 
 
 def _prepare_candidate_dir(destination: Path, candidate_id: str) -> Path:
-    """Create a candidate directory containing only durable probe receipts."""
+    """Create a candidate directory while preserving receipts and raw evidence."""
 
     candidate_dir = _candidate_dir(destination, candidate_id)
     candidate_dir.mkdir(parents=True, exist_ok=True)
     for path in candidate_dir.iterdir():
-        if path.name in {"probe.json", "result.json", "retry-artifact"}:
+        if path.name in {"probe.json", "result.json", "retry-artifact", "evidence"}:
             continue
         if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
         else:
             path.unlink(missing_ok=True)
     return candidate_dir
+
+
+def _retain_attempt_evidence(destination, candidate_id, attempt_dir):
+    """Preserve raw answers/timings and diagnostics before temporary cleanup."""
+    evidence = _candidate_dir(destination, candidate_id) / "evidence" / attempt_dir.name
+    for name in ("request.json", "worker.log", "probe.json", "result.json", "quality", "benchmark", "evidence"):
+        source = attempt_dir / name
+        if not source.exists():
+            continue
+        evidence.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, evidence / name, dirs_exist_ok=True)
+        else:
+            shutil.copy2(source, evidence / name)
+    # A rejected or failed export need not retain a second checkpoint, but its
+    # precision/calibration records must remain available with the attempt.
+    for name in ("config.json", "manifest.json", "precision-audit.json", "vision-quantization.json"):
+        source = attempt_dir / "artifact" / name
+        if source.is_file():
+            (evidence / "artifact-metadata").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, evidence / "artifact-metadata" / name)
 
 
 def _existing_receipt(
@@ -722,7 +758,7 @@ def _run_vllm_comparison(
     shutil.rmtree(work_root, ignore_errors=True)
     work_root.mkdir(parents=True, exist_ok=True)
     runtime = candidate.get("runtime_config", {})
-    worker_python = _worker_python(candidate)
+    worker_python = _runtime_python(candidate)
     models = {
         "dense": str(_resolve(snap["model"]["path"])),
         "quantized": str(destination / "final" / "artifact"),
@@ -998,6 +1034,7 @@ def _execute_snapshot(snap: dict[str, Any], destination: Path) -> dict[str, Any]
                 {"candidate": candidate_id, "status": "worker_failed"}
             )
         finally:
+            _retain_attempt_evidence(destination, candidate_id, attempt_dir)
             shutil.rmtree(attempt_dir, ignore_errors=True)
             # The temporary root is never part of the retained result layout.
             shutil.rmtree(work_root, ignore_errors=True)

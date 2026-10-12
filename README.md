@@ -56,14 +56,19 @@ reproduction package. Their model-specific preparation requirements are listed i
 
 ## Reported local results
 
-| Model | Five-task mean retention | Batch-1 end-to-end speedup |
-| --- | ---: | ---: |
-| Qwen3-VL-4B-Instruct | 95.4011% | 2.5293x |
-| LLaVA-1.5-7B | 95.5839% | 2.9150x |
+| Model | GPU | Five-task mean retention | Batch-1 end-to-end speedup |
+| --- | --- | ---: | ---: |
+| Qwen3-VL-4B-Instruct | RTX 4090 | 95.4011% | 2.5293x |
+| LLaVA-1.5-7B | RTX 4090 | 95.5839% | 2.9150x |
+| InternVL3.5-14B | RTX PRO 6000 | 94.5999% | 2.2728x |
+| DeepSeek-VL2 (full) | RTX PRO 6000 | 97.2659% | 4.8167x |
 
-Measured on RTX 4090, using 128 inputs x 3 rounds per backend. These are reported
-local measurements, not results reproduced from this source-only package. See
-[settings, per-task retention and scope](docs/status.md).
+Measured using 128 inputs x 3 rounds per backend. InternVL's quality target was
+not met; the user stopped Runtime recovery and selected the first complete
+candidate for final inference and timing. These are reported local measurements,
+not results reproduced from this source-only package. See
+[settings, per-task retention and scope](docs/status.md) and the
+[DeepSeek-VL2 result report](docs/results/deepseek-vl2-rtx-pro-6000.md).
 
 ## Documentation and source
 

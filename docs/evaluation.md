@@ -90,6 +90,12 @@ run cannot qualify. Stack's gate uses native generation; final serving uses vLLM
 with the native task protocol. LMMS was used for candidate selection in the
 reference searches and is not an untouched held-out test.
 
+Both native and vLLM aggregation verify the actual candidate and Dense sample
+files: reported counts must be positive integers, sample IDs must be unique,
+and nonempty document hashes must match by ID. Task scores must be finite.
+Missing, incomplete or misaligned samples and nonfinite scores are evidence
+errors, not valid quality rejections that can trigger paired recovery.
+
 ## Vision Token search
 
 Token selection acts on post-encoder visual features, preserving native image
@@ -101,3 +107,26 @@ prompts must be verified for each model/runtime bridge.
 The model-specific JSON defines a finite decreasing keep-ratio ladder and failure
 stopping rule. The independent runner measures eligible candidates and retains
 conservative options for Stack recovery. See [Token commands](../search/README.md#independent-token-entry-point).
+
+The shared selector ranks feature L2 norms, keeps the highest-scoring token
+in each coverage region, fills the remaining budget by score and restores
+original order. Spatial coverage does not measure semantic diversity or
+question relevance; a low-norm text or number feature can still be removed.
+
+For the current InternVL job, each native 448-pixel tile produces a 16 x 16
+grid of 256 features. Selection runs independently on every tile, including
+the native thumbnail, without additional image transformations. A 6 x 6
+coverage grid has regions of 4, 6 or 9 tokens and imposes a 36-token floor.
+Requested keep ratios 0.95, 0.90 and 0.85 retain 244, 231 and 218 tokens per
+tile; 0.10 retains 36 rather than 26. This fixed per-tile allocation does not
+adapt to content or remove redundancy between a thumbnail and its tiles.
+Selector correctness checks alone cannot attribute measured quality losses
+to coverage; that requires a comparison at the same retained token count.
+
+The full DeepSeek-VL2 checkpoint produces a 14 x 14 main-feature grid per native
+tile. Its selector handles each global/local tile separately and preserves all
+native row/view separators and raster order. Keep ratio 0.60 selects 118 of 196
+main features per tile after rounding, or 60.2041%. The complete visual stream
+also contains the protected separators, so its actual retention is higher and
+depends on the native tile layout. Text tokens remain unchanged; compacted
+prompt retention is a separate mechanism measurement.

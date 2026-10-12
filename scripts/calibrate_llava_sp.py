@@ -1,4 +1,4 @@
-"""Collect native LLaVA FFN moments from held-out calibration inputs."""
+"""Collect native LLaVA/InternVL FFN moments from held-out inputs."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from search.model import PROJECT_ROOT, load_model, prepare_inputs
 from search.evaluate import load_samples
 from search.context import require_stages, validate_result_scope
-from skills.structured_pruning import contribution_scores, decode_layer, load_calibration
+from skills.structured_pruning import contribution_scores, decode_layer, load_calibration, decoder_topology
 
 MAGIC_MOMENTS = b"A4FVLMSPMOM1\0"
 MAGIC_SCORES = b"A4FVLMSPSCO1\0"
@@ -75,8 +75,8 @@ def main():
     calibration = (PROJECT_ROOT / config["calibration"]["source"]).resolve()
     if not calibration.is_relative_to(root) or calibration == root:
         raise ValueError("Calibration must use this model's dedicated result scope")
-    if model_config.get("adapter") not in {"llava15", "llava_onevision"}:
-        raise ValueError("This collector requires the implemented native LLaVA path")
+    if model_config.get("adapter") not in {"llava15", "llava_onevision", "internvl35"}:
+        raise ValueError("This collector requires an implemented native LLaVA/InternVL path")
     if calibration.exists():
         raise ValueError(f"Calibration already exists; inspect and reuse it: {calibration}")
     samples = load_samples(
@@ -87,11 +87,11 @@ def main():
         media_root=PROJECT_ROOT / evaluation["data"]["media_root"])]
     validate_heldout(samples, evaluation_samples)
     model, processor = load_model(model_config)
-    layers = model.model.language_model.layers
+    text_config, layers = decoder_topology(model)
     dimensions = {
         "num_hidden_layers": len(layers),
-        "hidden_size": int(model.config.text_config.hidden_size),
-        "intermediate_size": int(model.config.text_config.intermediate_size),
+        "hidden_size": int(text_config.hidden_size),
+        "intermediate_size": int(text_config.intermediate_size),
     }
     states = []
     markers = []
@@ -109,7 +109,7 @@ def main():
         def capture(module, args, state=states[-1], call=call):
             value = args[0].detach().float()
             if value.ndim != 3 or value.shape[0] != 1:
-                raise ValueError("Unexpected LLaVA MLP activation rank")
+                raise ValueError("Unexpected native MLP activation rank")
             value = value.reshape(-1, value.shape[-1])
             if call["prefill"]:
                 call["prefill"] = False
@@ -132,7 +132,9 @@ def main():
                     marker["prefill"] = True
                 inputs = prepare_inputs(processor, sample, evaluation["data"]["media_root"])
                 inputs = inputs.to(model.device)
-                active["image_mask"] = (inputs["input_ids"][0] == model.config.image_token_index)
+                image_id = (model.img_context_token_id if model_config.get("adapter") == "internvl35"
+                            else model.config.image_token_index)
+                active["image_mask"] = (inputs["input_ids"][0] == image_id)
                 if not active["image_mask"].any() or active["image_mask"].all():
                     raise ValueError("Calibration requires both image and text tokens")
                 generation = dict(evaluation["generation"])
@@ -175,7 +177,9 @@ def main():
         "source": data,
     }, indent=2) + "\n")
     (calibration / "statistics-manifest.json").write_text(json.dumps({
-        "calibration_protocol": "llava_native_image_mask_mlp_down_projection_v2",
+        "calibration_protocol": ("internvl_native_image_mask_mlp_down_projection_v1"
+                                 if model_config.get("adapter") == "internvl35"
+                                 else "llava_native_image_mask_mlp_down_projection_v2"),
         "model": model_config,
         "dimensions": dimensions,
         "sample_count": len(samples),

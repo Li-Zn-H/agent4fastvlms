@@ -1,0 +1,8 @@
+# Quantizer only: GPTQModel requires protobuf >=7.34, whereas vLLM's CUTLASS
+# dependencies and LMMS's wandb require protobuf <7. Keep those in runtime.
+-r requirements-internvl.txt
+gptqmodel==7.5.0
+ninja==1.13.2
+optimum==2.3.0
+# Imported by GPTQModel's multimodal helpers but absent from its dependencies.
+requests==2.34.2

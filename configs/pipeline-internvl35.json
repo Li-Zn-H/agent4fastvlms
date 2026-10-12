@@ -1,0 +1,14 @@
+{
+  "model_id": "internvl35",
+  "output": "results/model/internvl3_5_14b/rtx_pro6000/pipeline",
+  "coordinator_python": ".venv-internvl/bin/python",
+  "optimization_config": "configs/optimization-internvl35.json",
+  "token_output": "results/model/internvl3_5_14b/rtx_pro6000/search/vision-token/runner",
+  "structured_pruning_config": "configs/structured_pruning-internvl35.json",
+  "sp_probe_output": "results/model/internvl3_5_14b/rtx_pro6000/search/structured-pruning/hardware-probe",
+  "quantization_config": "configs/quantization-internvl35.json",
+  "stack_config": "configs/stack-internvl35.json",
+  "runtime_config": "configs/stack_runtime-internvl35.json",
+  "kv_config": "configs/stack_kv_cache-internvl35.json",
+  "serving_lmms_config": "configs/serving_lmms-internvl35.json"
+}

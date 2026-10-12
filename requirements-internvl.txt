@@ -1,0 +1,6 @@
+# Native InternVL3.5-14B adapter; keep Dense isolated from quantization.
+-r requirements-qwen3vl.txt
+accelerate==1.15.0
+timm==1.0.30
+einops==0.8.2
+sentencepiece==0.2.2
