@@ -42,6 +42,14 @@ path by changing the protocol. The EVA2-CLIP vision tower has 63 layers,
 main visual features plus the model's boundary features. Validate this geometry
 from the loaded checkpoint before implementing Token selection.
 
+The checkpoint's `generation_config.json` defaults to sampling
+(`do_sample=true`, temperature 0.8, top-p 0.8, max length 8192). Before quality
+work, choose and record the GLM task generation profile: either preserve that
+native profile or use an explicitly justified deterministic profile such as
+greedy decoding with a fixed new-token limit. Dense, every candidate and final
+serving must use the identical frozen options; do not mix checkpoint defaults
+with framework defaults.
+
 The text decoder is a dense 40-layer ChatGLM stack with hidden size 4096,
 FFN width 13696, 32 attention heads, two multi-query KV groups and an 8,192
 token context limit. It is not an MoE model: do not carry over Kimi expert,
@@ -67,8 +75,9 @@ not a global optimum.
 ## Work
 
 1. Inspect the checkpoint, tokenizer, image transform, context envelope and
-   generation output semantics. Implement a lazy `chatglm` adapter and native
-   input/timing hooks; run CPU shape and prompt checks before GPU execution.
+   generation output semantics. Freeze the generation profile and stopping IDs,
+   then implement a lazy `chatglm` adapter and native input/timing hooks. Run
+   CPU shape and prompt checks before GPU execution.
 2. Add GLM-specific model, evaluation, optimization, SP, quantization, Stack,
    Runtime, KV and serving JSONs. Set every `evaluation.result_root`, explicit
    source/output/Parent path and LMMS baseline to
