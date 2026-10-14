@@ -43,12 +43,13 @@ main visual features plus the model's boundary features. Validate this geometry
 from the loaded checkpoint before implementing Token selection.
 
 The checkpoint's `generation_config.json` defaults to sampling
-(`do_sample=true`, temperature 0.8, top-p 0.8, max length 8192). Before quality
-work, choose and record the GLM task generation profile: either preserve that
-native profile or use an explicitly justified deterministic profile such as
-greedy decoding with a fixed new-token limit. Dense, every candidate and final
-serving must use the identical frozen options; do not mix checkpoint defaults
-with framework defaults.
+(`do_sample=true`, temperature 0.8, top-p 0.8, max length 8192). For this
+search, freeze the reproducible task profile as `do_sample=false`,
+`max_new_tokens=64` and `ignore_eos=false`, with the checkpoint's three EOS IDs
+(`151329`, `151336`, `151338`). Record the difference from the checkpoint
+default in the Dense receipt. Dense, every candidate and final serving must use
+these identical options; a sampling study would require a separate job and
+result root.
 
 The text decoder is a dense 40-layer ChatGLM stack with hidden size 4096,
 FFN width 13696, 32 attention heads, two multi-query KV groups and an 8,192
