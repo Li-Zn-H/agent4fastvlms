@@ -1,0 +1,28 @@
+{
+  "calibration": {
+    "source": "results/model/kimi_vl/a800/search/structured-pruning/calibration",
+    "data": "data/evaluation/calibration-llava15-128.jsonl"
+  },
+  "selection": {
+    "score": "routed_post_swiglu_output_contribution_rms_v1",
+    "score_dtype": "float32",
+    "channel_group_size": 128,
+    "protected_layers": []
+  },
+  "hardware_probe": {
+    "worker_python": ".venv-runtime-kimi/bin/python",
+    "requirements": "requirements-runtime-kimi-vl.txt",
+    "minimum_width_ratio": 0.25,
+    "warmup_iterations": 5,
+    "measurement_iterations": 20
+  },
+  "allocation": {
+    "method": "moe_layer_normalized_marginal_cost_v1"
+  },
+  "search": {
+    "initial_depth_step": 0.05,
+    "failure_policy": "step_back_on_dev_failure",
+    "failure_recovery_steps": 1,
+    "maximum_quality_candidates": 20
+  }
+}

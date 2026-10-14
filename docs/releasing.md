@@ -1,7 +1,7 @@
 # Public Source Preparation
 
-This edition presents Qwen3-VL-4B, LLaVA-1.5-7B, InternVL3.5-14B and the full
-DeepSeek-VL2 integration. It retains core adapters, Skills, orchestration,
+This edition presents Qwen3-VL-4B, LLaVA-1.5-7B, InternVL3.5-14B, the full
+DeepSeek-VL2 integration and the Kimi-VL-A3B-Instruct integration. It retains core adapters, Skills, orchestration,
 evaluation, benchmark/recovery code, regression tests, the main JSON jobs, setup
 and method guides. Shared internal model helpers stay in place to preserve the
 validated implementations.
@@ -30,7 +30,7 @@ a source-only checkout. They do not load model packages or certify GPU behavior.
 
 All reference measurements in [status](status.md) are reported local results.
 Raw receipts, exact Search/Dev selection and calibration are not distributed;
-this edition does not claim independent end-to-end reproduction. The four public
+this edition does not claim independent end-to-end reproduction. The five public
 model configurations retain their documented preparation requirements. Reported
 GPU results remain local measurements; the source checkout does not contain
 checkpoints, datasets or raw receipts.

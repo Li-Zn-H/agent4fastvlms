@@ -17,6 +17,9 @@ STRATA = ("visual_prefill", "text_prefill", "decode")
 
 
 def validate_config(config, dimensions):
+    if dimensions.get("model_type") == "kimi_vl":
+        from skills.kimi_vl_pruning import validate_config as validate
+        return validate(config, dimensions)
     if dimensions.get("model_type") == "deepseek_vl_v2":
         from skills.deepseek_vl2_pruning import validate_config as validate
         return validate(config, dimensions)
@@ -114,6 +117,9 @@ def contribution_scores(moments, down_column_norms):
 
 
 def load_calibration(directory, dimensions):
+    if dimensions.get("model_type") == "kimi_vl":
+        from skills.kimi_vl_pruning import load_calibration as load
+        return load(directory, dimensions)
     """Validate the complete frozen layer domain, retaining its original protocol."""
     if dimensions.get("model_type") == "deepseek_vl_v2":
         from skills.deepseek_vl2_pruning import load_calibration as load
@@ -142,6 +148,9 @@ def load_calibration(directory, dimensions):
 
 
 def make_recipe(scores, widths, dimensions, selection) -> dict[str, Any]:
+    if dimensions.get("model_type") == "kimi_vl":
+        from skills.kimi_vl_pruning import make_recipe as make
+        return make(scores, widths, dimensions, selection)
     """Drop the lowest scores; ties use the original channel index."""
     if dimensions.get("model_type") == "deepseek_vl_v2":
         from skills.deepseek_vl2_pruning import make_recipe as make
@@ -178,6 +187,9 @@ def make_recipe(scores, widths, dimensions, selection) -> dict[str, Any]:
 
 
 def validate_recipe(recipe, dimensions):
+    if dimensions.get("model_type") == "kimi_vl":
+        from skills.kimi_vl_pruning import validate_recipe as validate
+        return validate(recipe, dimensions)
     if dimensions.get("model_type") == "deepseek_vl_v2":
         from skills.deepseek_vl2_pruning import validate_recipe as validate
         return validate(recipe, dimensions)
@@ -250,6 +262,8 @@ def slice_mlp(mlp, channels):
 
 
 def decoder_topology(model):
+    if getattr(model.config, "model_type", None) == "kimi_vl":
+        return model.config.text_config, model.language_model.model.layers
     """Return native text config/layers without mutating or aliasing the model."""
     if getattr(model.config, "model_type", None) == "internvl_chat":
         return model.config.llm_config, model.language_model.model.layers
@@ -259,6 +273,9 @@ def decoder_topology(model):
 
 
 def apply_recipe(model, recipe):
+    if getattr(model.config, "model_type", None) == "kimi_vl":
+        from skills.kimi_vl_pruning import apply_recipe as apply
+        return apply(model, recipe)
     """Apply once to a freshly loaded Dense model; never reintroduce channels."""
     if getattr(model.config, "model_type", None) == "deepseek_vl_v2":
         from skills.deepseek_vl2_pruning import apply_recipe as apply
@@ -291,6 +308,9 @@ def apply_recipe(model, recipe):
 
 
 def audit_recipe(model, recipe):
+    if getattr(model.config, "model_type", None) == "kimi_vl":
+        from skills.kimi_vl_pruning import audit_recipe as audit
+        return audit(model, recipe)
     """Record actual compact shapes and parameter counts before evaluation."""
     if getattr(model.config, "model_type", None) == "deepseek_vl_v2":
         from skills.deepseek_vl2_pruning import audit_recipe as audit
@@ -402,6 +422,9 @@ def allocation_path(
     zero cost; ties use layer index, then target width. This is a proxy, not an
     independently measured layer-sensitivity estimate.
     """
+    if dimensions.get("model_type") == "kimi_vl":
+        from skills.kimi_vl_pruning import allocation_path as allocate
+        return allocate(scores, dimensions, selection, admitted_widths, starting_widths=starting_widths)
     if dimensions.get("model_type") == "deepseek_vl_v2":
         from skills.deepseek_vl2_pruning import allocation_path as allocate
         return allocate(scores, dimensions, selection, admitted_widths, starting_widths=starting_widths)

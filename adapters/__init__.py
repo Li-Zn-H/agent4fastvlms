@@ -8,6 +8,7 @@ from adapters.llava_onevision import LlavaOneVisionAdapter
 from adapters.llava15 import Llava15Adapter
 from adapters.internvl35 import InternVL35Adapter
 from adapters.deepseek_vl2 import DeepSeekVL2Adapter
+from adapters.kimi_vl import KimiVLAdapter
 
 
 models.register(Qwen3VLAdapter())
@@ -15,6 +16,7 @@ models.register(LlavaOneVisionAdapter())
 models.register(Llava15Adapter())
 models.register(InternVL35Adapter())
 models.register(DeepSeekVL2Adapter())
+models.register(KimiVLAdapter())
 hardware.register(CudaAdapter())
 
 __all__ = ["AdapterError", "HardwareAdapter", "ModelAdapter", "hardware", "models", "select_model"]

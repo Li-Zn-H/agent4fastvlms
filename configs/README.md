@@ -15,6 +15,12 @@ See [integration and evidence](../docs/deepseek-vl2-preparation.md).
 
 ## Files and ownership
 
+The `*-kimi-vl.json` jobs describe an in-progress Kimi-VL-A3B-Instruct migration
+on A800, with separate native Instruct evidence and explicit best-effort final
+selection. Individual stage interfaces are registered for probing; the complete
+pipeline remains guarded pending execution evidence. They are not a completed reference result. See
+[preparation and current scope](../docs/kimi-vl-preparation.md).
+
 | Model | Main pipeline | Final inference and matched timing |
 | --- | --- | --- |
 | Qwen3-VL-4B | [pipeline.json](pipeline.json) | [serving.json](serving.json) |

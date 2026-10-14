@@ -1,9 +1,9 @@
 # Reported Reference Results
 
-The model targets are Qwen3-VL-4B-Instruct, LLaVA-1.5-7B, InternVL3.5-14B and
-the full DeepSeek-VL2 checkpoint. Qwen/LLaVA measurements were checked against
+The model targets are Qwen3-VL-4B-Instruct, LLaVA-1.5-7B, InternVL3.5-14B, the
+full DeepSeek-VL2 checkpoint and Kimi-VL-A3B-Instruct. Qwen/LLaVA measurements were checked against
 their saved final freezes and benchmark summaries on 2026-10-06; InternVL
-completed on 2026-10-09 and DeepSeek-VL2 on 2026-10-12.
+completed on 2026-10-09, DeepSeek-VL2 on 2026-10-12 and Kimi-VL on 2026-10-15.
 Raw receipts and checkpoints
 are not distributed with this source edition; this is not a fresh reproduction.
 
@@ -14,6 +14,7 @@ are not distributed with this source edition; this is not a fresh reproduction.
 | Qwen3-VL-4B-Instruct | RTX 4090 | 95.4011% | 2.5293x | 773.029 / 305.632 ms |
 | LLaVA-1.5-7B | RTX 4090 | 95.5839% | 2.9150x | 570.785 / 195.809 ms |
 | InternVL3.5-14B | RTX PRO 6000 | 94.5999% | 2.2728x | 1373.939 / 604.507 ms |
+| Kimi-VL-A3B-Instruct | A800-SXM4-80GB | 95.8906% | 4.5465x | 903.385 / 198.697 ms |
 
 InternVL's outcome is `accelerated_quality_unmet`; its final freeze is
 `lmms_evaluated`, not `lmms_qualified`. The user stopped final Runtime recovery
@@ -142,6 +143,31 @@ Local evidence is under `results/model/internvl3_5_14b/rtx_pro6000/`:
 [execution scope and checks](internvl-preparation.md),
 [pipeline-internvl35.json](../configs/pipeline-internvl35.json) and
 [serving-internvl35.json](../configs/serving-internvl35.json) for reuse.
+
+## Kimi-VL-A3B-Instruct (CUDA, 2026-10-15)
+
+The Kimi-VL-A3B-Instruct Instruct checkpoint completed the five-task native
+LMMS gate and matched serving benchmark on an NVIDIA A800-SXM4-80GB with driver
+580.126.09. The selected Stack uses `sp-0070` (23.6237% stored decoder FFN
+parameter removal), fresh GPTQModel W4A16/group-128 Parent quantization and
+Token keep 0.75. Runtime is `mm-compile-o2`; the observed attention backend is
+TRITON_MLA, and `kv-auto` is selected. The final result is `lmms_qualified`
+with `goal_achieved` outcome.
+
+| Task | Samples | Dense | Final | Retention |
+| --- | ---: | ---: | ---: | ---: |
+| ChartQA | 2500 | 0.894400 | 0.824800 | 92.2182% |
+| MMStar | 1500 | 0.522915 | 0.540587 | 103.3796% |
+| TextVQA | 5000 | 0.887780 | 0.810600 | 91.3064% |
+| DocVQA | 5349 | 0.987107 | 0.907719 | 91.9575% |
+| POPE F1 | 9000 | 0.858343 | 0.863419 | 100.5914% |
+
+The equal-task mean retention is **95.8906%** across all 23,349 samples. The
+matched batch-1 timing used 384 requests per backend (128 inputs, three rounds,
+five warmups): Dense mean request time was 903.385 ms and serving was 198.697
+ms, for **4.5465x** end-to-end acceleration. See the [Kimi result report](results/kimi-vl-a3b-a800.md)
+for all Stack candidates, settings and evidence paths. Local evidence is under
+`results/model/kimi_vl/a800/`.
 
 ## DeepSeek-VL2 (CUDA, 2026-10-12)
 

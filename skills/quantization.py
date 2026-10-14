@@ -70,6 +70,15 @@ DEEPSEEK_VISION_LINEAR = re.compile(
     r"^vision\.blocks\.\d+\.(?:attn\.(?:qkv|proj)|mlp\.(?:fc1|fc2))$"
 )
 DEEPSEEK_MAPPER = re.compile(r"^projector\.layers\.(?:0|2)$")
+KIMI_LANGUAGE_LINEAR = re.compile(
+    r"^language_model\.model\.layers\.\d+\."
+    r"(?:self_attn\.(?:q_proj|kv_a_proj_with_mqa|kv_b_proj|o_proj)|"
+    r"mlp\.(?:(?:experts\.\d+|shared_experts)\.)?(?:gate_proj|up_proj|down_proj))$"
+)
+KIMI_VISION_LINEAR = re.compile(
+    r"^vision_tower\.encoder\.blocks\.\d+\.(?:wqkv|wo|mlp\.(?:fc0|fc1))$"
+)
+KIMI_MAPPER = re.compile(r"^multi_modal_projector\.(?:linear_1|linear_2)$")
 PRESERVE = re.compile(
     r"(?:^|\.)"
     r"(?:lm_head|embed_tokens|visual\.patch_embed|visual\.pos_embed|"
@@ -246,6 +255,8 @@ def validate_config(config: dict[str, Any]) -> None:
 
 
 def _module_patterns(model_adapter):
+    if model_adapter == "kimi_vl":
+        return KIMI_LANGUAGE_LINEAR, KIMI_VISION_LINEAR, KIMI_MAPPER
     if model_adapter == "deepseek_vl2":
         return DEEPSEEK_LANGUAGE_LINEAR, DEEPSEEK_VISION_LINEAR, DEEPSEEK_MAPPER
     if model_adapter == "internvl35":

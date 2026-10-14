@@ -81,6 +81,9 @@ def snapshot(config_path, model_path, evaluation_path, device) -> dict[str, Any]
     )
     require_stages(model, ("sp",), device=device)
     validate_result_scope(model, evaluation)
+    if model.get("adapter") == "kimi_vl":
+        from search.kimi_pruning_probe import snapshot as moe_snapshot
+        return moe_snapshot(config, model, evaluation, device)
     if model.get("adapter") == "deepseek_vl2":
         from search.deepseek_pruning_probe import snapshot as moe_snapshot
         return moe_snapshot(config, model, evaluation, device)

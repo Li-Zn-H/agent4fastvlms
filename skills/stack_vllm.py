@@ -43,6 +43,21 @@ def stack_widths(config: object) -> tuple[int, ...]:
     """Read and validate the physical per-layer width vector from HF config."""
 
     model_type = _value(config, "model_type", "qwen3_vl")
+    if model_type == "kimi_vl":
+        from skills.kimi_vl_artifact import STACK_ARCHITECTURE as kimi_architecture
+        from skills.kimi_vl_pruning import dimensions, units
+        from skills.kimi_vl_vllm import layer_widths
+        domain = units(dimensions(_value(config, "text_config")))
+        raw = _value(config, "a4fvlm_stack_widths")
+        if (not isinstance(raw, (list, tuple)) or _value(config, "architectures") != [kimi_architecture]
+                or _value(config, "a4fvlm_stack_physical_compaction") is not True
+                or _value(config, "a4fvlm_stack_units") != domain
+                or not _value(config, "a4fvlm_stack_recipe_digest")):
+            raise ValueError("Kimi vLLM physical topology metadata is incomplete")
+        layer_widths({"text_config": _value(config, "text_config"), "a4fvlm_stack_widths": raw})
+        if not any(w < u["original_width"] for w, u in zip(raw, domain, strict=True)):
+            raise ValueError("Kimi physical Stack is still Dense")
+        return tuple(raw)
     if model_type == "deepseek_vl_v2":
         from skills.deepseek_vl2_artifact import STACK_ARCHITECTURE as deepseek_architecture
         from skills.deepseek_vl2_pruning import dimensions, units
@@ -114,6 +129,11 @@ def validate_stack_artifact(artifact: str | Path) -> dict[str, Any]:
     parent = json.loads(parent_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     widths = stack_widths(config)
+    if config.get("model_type") == "kimi_vl":
+        from skills.kimi_vl_artifact import validate_quantized_bindings, audit_quantized_artifact
+        validate_quantized_bindings(root, config, manifest)
+        if audit_quantized_artifact(root, manifest)["status"] != "passed":
+            raise ValueError("Kimi physical Stack precision/geometry audit failed")
     if config.get("model_type") == "deepseek_vl_v2":
         from skills.deepseek_vl2_artifact import validate_quantized_bindings, audit_quantized_artifact
         validate_quantized_bindings(root, config, manifest)
@@ -544,6 +564,18 @@ def prepare_vllm_artifact(
     root = Path(artifact)
     config = json.loads((root / "config.json").read_text(encoding="utf-8"))
     architectures = config.get("architectures") or []
+    if config.get("model_type") == "kimi_vl":
+        from skills.kimi_vl_artifact import validate_quantized_bindings, audit_quantized_artifact
+        manifest = json.loads((root / "manifest.json").read_text())
+        validate_quantized_bindings(root, config, manifest)
+        if audit_quantized_artifact(root, manifest)["status"] != "passed":
+            raise ValueError("Kimi vLLM artifact precision/geometry audit failed")
+        return {"custom_stack": config.get("a4fvlm_stack_widths") is not None,
+                "architecture": architectures[0], "model_type": "kimi_vl",
+                "worker_start_method": os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn"),
+                "widths": config.get("a4fvlm_stack_widths"),
+                "model_class_overrides": {architectures[0]: "skills.kimi_vl_vllm:A4FVLMKimiVLForConditionalGeneration"},
+                "vision_token": {"runtime": configured}}
     if config.get("model_type") == "deepseek_vl_v2":
         from skills.deepseek_vl2_artifact import validate_quantized_bindings, audit_quantized_artifact
         manifest = json.loads((root / "manifest.json").read_text())

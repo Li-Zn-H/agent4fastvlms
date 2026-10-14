@@ -1,0 +1,20 @@
+{
+  "adapter": "kimi_vl",
+  "hardware": "cuda",
+  "path": "models/Kimi-VL-A3B-Instruct",
+  "device": "cuda:0",
+  "dtype": "bfloat16",
+  "attn_implementation": "eager",
+  "protocol": "instruct",
+  "native_source_sha256": {
+    "configuration_kimi_vl.py": "d30462b89993b9fef138db983d3884bbc39750effadf2efe67f404d28ee40e5b",
+    "modeling_kimi_vl.py": "74e8f18afa5bf8f580ef5be5f15b51506f1e4f604df5a84f508a7796b8947c0b",
+    "processing_kimi_vl.py": "f8e64816baed0a92d85d0a987b587028ad55a0779f3ace8c5b68db705dc61561",
+    "image_processing_kimi_vl.py": "bb58551e088f3bb0027b1886ca5ff42776c485acec1a9aafe91553ff76926870",
+    "tokenization_moonshot.py": "0ae85e29c37689fefe41b8bfdb7aebd9a0152defedbf37fae0f8413000512029",
+    "chat_template.jinja": "172c7450a66b9b3644538888ffa24d02047e535e9d1f911564460203fbf7e8e8",
+    "preprocessor_config.json": "d968a7d7f83f82c3b0e1061079dcdbefd6f2c75b7ee4240cce995afaeae1f622",
+    "tokenizer_config.json": "d7861718cab22c7962e14b4693b4009dd526115cd392dc779069a8173be95703",
+    "generation_config.json": "da26dd1916774784790db2b83336bad62d0917356743478ba6eb0c425c53eac5"
+  }
+}

@@ -1,15 +1,13 @@
-# DeepSeek-VL2 Optimization Goal
+# Reusable Model Optimization Goal
 
-Target the full `deepseek-ai/deepseek-vl2` checkpoint, not the Small or Tiny
-variants. This search is inactive until explicitly requested. Reading or editing
-this file launches nothing. Reuse valid evidence and resume interrupted work
-only within the authorized scope.
+Edit the inputs, then ask an Agent: "Execute GOAL.md end to end; reuse valid
+evidence and resume interrupted work." Editing this file alone launches nothing.
 
 ## Inputs
 
 ```json
 {
-  "model": "models/DeepSeek-VL2",
+  "model": "models/Kimi-VL-A3B-Instruct",
   "hardware": {
     "platform": "cuda",
     "device": 0
@@ -22,57 +20,18 @@ Record actual hardware/software identity. The Agent prepares model-specific
 JSONs and adapters using [AGENTS](AGENTS.md), [setup](docs/getting-started.md),
 [migration](docs/model-migration.md) and [the workflow](docs/agent-search.md).
 
-Use `results/model/deepseek_vl2/rtx_pro6000_gpu072a4781` for the current GPU.
-Earlier evidence remains in `results/model/deepseek_vl2/rtx_pro6000`; the new
-scope records authenticated reuse of native quality and calibration, with fresh
-timing required. Choose a separate hardware scope if the device changes again.
-Preserve completed experiments. Never transfer another model's scores,
-calibration, recipes or speedups to the new experiment.
+Use the original Instruct checkpoint and its native non-thinking chat template,
+image preprocessing, generation termination and task scoring. Do not substitute
+Thinking weights. Create Kimi-specific JSON jobs and a separate local artifact
+scope under `results/model/kimi_vl/a800/`, bound to the actual GPU identity.
+Inspect existing processes before GPU work and avoid overlapping coordinators.
+Preserve all GLM, Qwen, LLaVA, InternVL and DeepSeek experiments; their scores,
+calibration, physical recipes, quantized artifacts and speedups cannot qualify
+Kimi. Implement and validate missing model interfaces before running stages.
 
-## Preparation and activation
-
-This model/hardware search completed on 2026-10-12. Reuse its matching receipts;
-reading or editing this template does not start a new search. A changed model,
-GPU or evaluation protocol requires its own result scope and denominators.
-
-The original full checkpoint and pinned official implementation remain intact.
-The native Dense environment is `.venv-deepseek`, quantization uses
-`.venv-quant-deepseek`, and Runtime/serving uses `.venv-runtime-deepseek`.
-Set OMP/MKL/OpenBLAS thread counts to one for execution. See
-[model-specific integration](docs/deepseek-vl2-preparation.md) and
-[final measurements](docs/status.md#deepseek-vl2-cuda-2026-10-12).
-
-Dense Search/Dev, complete native LMMS, calibration, independent Token/SP/GPTQ,
-six Stack candidates, Runtime, Auto KV and final serving LMMS have matching
-model-specific evidence. The selected sixth Stack uses 28.4587% decoder
-FFN-parameter removal, fresh Parent GPTQ W4A16/group128 and Token keep 0.85
-(167/196 main features per native tile, protected layout preserved).
-Routing, all 72 routed experts, top-6 selection and two shared experts remain
-native; SP removes physical intermediate channels rather than experts.
-Native Stack retains 97.4211% of Dense across the five equally weighted tasks.
-
-Final serving uses O2, compilation mode 3, `FULL_AND_PIECEWISE` CUDA Graphs,
-TRITON_MLA, Marlin MoE and Auto KV. Complete native serving LMMS covers all
-23,349 samples and retains **97.2659%**. Its matching freeze is
-`stack-serving-lmms/final/serving-freeze.json`, digest `8c315f7c4ea69ac904f0`,
-with status `lmms_qualified`. E4M3 failed kernel initialization because required
-shared memory exceeded SM120's per-block limit; it supplied no quality/timing
-measurement and was excluded. Auto KV completes the required path.
-
-Single-image inference passes actual native prompt/Token/Runtime checks.
-Matched Search128 timing uses the same physical GPU, five warmups and three
-rounds per backend: original Transformers Dense averages 0.982524 seconds,
-final serving 0.203985 seconds, giving **4.816650x** end-to-end acceleration.
-`serving-use/benchmark/summary.json` records `goal_achieved`. This is batch-1
-image-open-to-decoded-answer timing; loading, warmup, cache reset and post-run
-prompt audit are excluded. Natural output lengths differ.
-
-Independent completion receipts are under `preparation/`: the selected Stack,
-Runtime, Auto KV, complete serving audit, `final-serving-inference-completion.json`
-and `final-serving-benchmark-completion.json`. Detailed local preparation and
-interruption histories are preserved there, outside the source guides.
-The adapter's complete pipeline ID is enabled after the measured path succeeds;
-registration alone never qualifies a new job.
+For this MoE checkpoint, preserve native routing, expert counts and top-k
+selection. SP must physically prune intermediate channels with model-specific
+calibration and export/reload checks; do not substitute expert dropping.
 
 ## Objective
 
@@ -114,7 +73,8 @@ blocks and resume; API/environment/execution failures are not quality failures.
 Never lower the target, silently disable mechanisms, resize native inputs or
 truncate prompts to bypass a failure.
 
-Explicit `best_effort` keeps 95% as the target. After finite quality exhaustion,
+Set `selection_policy: best_effort` explicitly in the Kimi Stack and final
+serving jobs. This keeps 95% as the target. After finite quality exhaustion,
 continue with the best complete eligible candidate. Partial tasks and failed
 execution are never candidates. A below-target result is not goal achievement.
 Stop at verified success, a documented blocker needing external input, or finite

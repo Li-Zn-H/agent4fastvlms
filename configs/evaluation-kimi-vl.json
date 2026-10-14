@@ -1,0 +1,22 @@
+{
+  "result_root": "results/model/kimi_vl/a800",
+  "data": {
+    "search": "data/evaluation/search-128.jsonl",
+    "dev": "data/evaluation/search-256.jsonl",
+    "media_root": "data/evaluation"
+  },
+  "generation": {
+    "max_new_tokens": 64,
+    "do_sample": false,
+    "ignore_eos": false
+  },
+  "scoring": {
+    "maximum_response_tokens": 64,
+    "negation_window_tokens": 3,
+    "baseline": "dense"
+  },
+  "quality": {
+    "minimum_retention": 0.95,
+    "search_direct_pass_minimum_retention": 0.975
+  }
+}

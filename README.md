@@ -62,13 +62,15 @@ reproduction package. Their model-specific preparation requirements are listed i
 | LLaVA-1.5-7B | RTX 4090 | 95.5839% | 2.9150x |
 | InternVL3.5-14B | RTX PRO 6000 | 94.5999% | 2.2728x |
 | DeepSeek-VL2 (full) | RTX PRO 6000 | 97.2659% | 4.8167x |
+| Kimi-VL-A3B-Instruct | A800-SXM4-80GB | 95.8906% | 4.5465x |
 
 Measured using 128 inputs x 3 rounds per backend. InternVL's quality target was
 not met; the user stopped Runtime recovery and selected the first complete
 candidate for final inference and timing. These are reported local measurements,
 not results reproduced from this source-only package. See
 [settings, per-task retention and scope](docs/status.md) and the
-[DeepSeek-VL2 result report](docs/results/deepseek-vl2-rtx-pro-6000.md).
+[DeepSeek-VL2 result report](docs/results/deepseek-vl2-rtx-pro-6000.md) and
+the [Kimi-VL result report](docs/results/kimi-vl-a3b-a800.md).
 
 ## Documentation and source
 

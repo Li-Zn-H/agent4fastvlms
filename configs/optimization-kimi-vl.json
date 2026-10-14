@@ -1,0 +1,7 @@
+{
+  "model_config": "configs/model-kimi-vl.json",
+  "evaluation_config": "configs/evaluation-kimi-vl.json",
+  "vision_token_config": "configs/vision_token-kimi-vl.json",
+  "device": 0,
+  "worker_python": ".venv-kimi/bin/python"
+}

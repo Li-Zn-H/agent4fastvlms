@@ -1,0 +1,12 @@
+{
+  "freeze": "results/model/kimi_vl/a800/stack-serving-lmms/final/serving-freeze.json",
+  "output": "results/model/kimi_vl/a800/serving-use",
+  "device": 0,
+  "dense_model_config": "configs/model-kimi-vl.json",
+  "dense_worker_python": ".venv-kimi/bin/python",
+  "evaluation_config": "configs/evaluation-kimi-vl.json",
+  "benchmark": {
+    "warmup": 5,
+    "repeats": 3
+  }
+}

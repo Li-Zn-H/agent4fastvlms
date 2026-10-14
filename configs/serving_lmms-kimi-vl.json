@@ -1,0 +1,39 @@
+{
+  "selection_policy": "best_effort",
+  "serving_state": "results/model/kimi_vl/a800/stack-runtime/serving-state.json",
+  "kv_freeze": "results/model/kimi_vl/a800/stack-kv-cache/final/kv-cache-freeze.json",
+  "output": "results/model/kimi_vl/a800/stack-serving-lmms",
+  "worker_python": ".venv-runtime-kimi/bin/python",
+  "device": 0,
+  "baseline_root": "results/model/kimi_vl/a800/lmms/dense",
+  "minimum_retention": 0.95,
+  "smoke_samples_per_task": 2,
+  "fallback_runtime_candidates": [
+    "baseline-auto-o0",
+    "compile-o1",
+    "baseline-auto-o2"
+  ],
+  "tasks": [
+    {
+      "task": "chartqa",
+      "metric": "relaxed_overall,none"
+    },
+    {
+      "task": "mmstar",
+      "metric": "average,none"
+    },
+    {
+      "task": "textvqa_val",
+      "metric": "exact_match,none"
+    },
+    {
+      "task": "docvqa_val",
+      "metric": "anls,none"
+    },
+    {
+      "task": "pope",
+      "metric": "pope_f1_score,none"
+    }
+  ],
+  "minimum_model_len": 131072
+}

@@ -1,0 +1,15 @@
+# CPU LMMS task host. Actual GPU generation uses .venv-kimi through native IPC.
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.11.0+cu130
+torchvision==0.26.0+cu130
+transformers==4.50.3
+tokenizers==0.21.4
+huggingface-hub==0.36.0
+lmms-eval==0.7.3
+datasets==4.4.1
+sentence-transformers==3.4.1
+accelerate==1.15.0
+Pillow==11.3.0
+tiktoken==0.14.0
+decord2==3.4.0

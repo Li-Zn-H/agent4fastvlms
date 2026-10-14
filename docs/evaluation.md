@@ -96,6 +96,14 @@ and nonempty document hashes must match by ID. Task scores must be finite.
 Missing, incomplete or misaligned samples and nonfinite scores are evidence
 errors, not valid quality rejections that can trigger paired recovery.
 
+The Kimi bridge additionally records original RGB raster hashes, questions,
+native generation settings and response hashes because LMMS 0.7.3 can hash a
+missing `request.doc` identically for every sample. These receipts are bound to
+the unmodified native result/sample files. Original Dense references may be
+reconstructed from the native cache after all questions and targets match;
+candidate receipts must come from actual generation. See
+[Kimi preparation and provenance](kimi-vl-preparation.md).
+
 ## Vision Token search
 
 Token selection acts on post-encoder visual features, preserving native image

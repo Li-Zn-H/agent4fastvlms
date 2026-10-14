@@ -73,6 +73,18 @@ print("a4fvlm_stack_adapter=" + json.dumps(adapter, sort_keys=True), flush=True)
 print("vllm_reload_ok", flush=True)
 """
     environment = os.environ.copy()
+    # The execution environment used by the coordinator can expose a
+    # placeholder thread count (for example ``OMP_NUM_THREADS=0``).  libgomp
+    # rejects non-positive values during vLLM startup, so remove invalid
+    # settings while preserving a caller-provided positive limit.
+    for variable in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        value = environment.get(variable)
+        try:
+            valid = value is not None and int(value) > 0
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            environment.pop(variable, None)
     # ``sys.executable`` may be a symlink into uv's shared interpreter.  Use
     # the selected virtualenv prefix so its console scripts remain visible.
     runtime_python = str(PROJECT_ROOT / runtime["runtime_python"]) if runtime.get("runtime_python") else sys.executable
@@ -269,6 +281,9 @@ def execute(request, destination):
 
 def run_pruning_probe(request):
     """Worker-only GPU work; no Dense model weights or quality generation."""
+    if request.get("model", {}).get("adapter") == "kimi_vl":
+        from search.kimi_pruning_probe import run
+        return run(request)
     if request.get("model", {}).get("adapter") == "deepseek_vl2":
         from search.deepseek_pruning_probe import run
         return run(request)
@@ -1183,7 +1198,7 @@ def run_quantization_candidate(request):
     try:
         from search.model import load_model
 
-        if (request.get("model", {}).get("adapter") == "deepseek_vl2"
+        if (request.get("model", {}).get("adapter") in ("deepseek_vl2", "kimi_vl")
                 and candidate.get("route") == "gptqmodel_w4a16"):
             # Initialize backend imports before the full Dense model exists;
             # dependency import frames must not retain its weights at reload.
@@ -1258,6 +1273,9 @@ def run_quantization_candidate(request):
                 export_result = export_multimodal_gptq(**export_options, loaded_model=model)
             elif request["model"].get("adapter") == "deepseek_vl2":
                 from skills.deepseek_vl2_quantization import export_multimodal_gptq
+                export_result = export_multimodal_gptq(**export_options, loaded_model=model)
+            elif request["model"].get("adapter") == "kimi_vl":
+                from skills.kimi_vl_quantization import export_multimodal_gptq
                 export_result = export_multimodal_gptq(**export_options, loaded_model=model)
             else:
                 export_result = export(**export_options)
@@ -1419,18 +1437,13 @@ def run_quantization_runtime_validation(request):
             "status": "passed",
             "path": str(manifest),
         }
-        from search.model import load_model
-
-        reloaded, reload_processor = load_model(
-            {**request["model"], "path": str(artifact_dir), "device": "cuda:0"}
-        )
-        del reloaded, reload_processor
-        import gc
-        import torch
-
-        gc.collect()
-        torch.cuda.empty_cache()
-        report.setdefault("stages", {})["reload"] = {"status": "passed"}
+        # The original candidate already completed the clean Transformers
+        # reload before quality and timing.  A late deploy-runtime retry must
+        # reuse that receipt and start vLLM without constructing a second
+        # CUDA model in this Worker; otherwise the parent's allocator state
+        # consumes the KV-cache headroom that the retry is meant to measure.
+        if report.get("stages", {}).get("reload", {}).get("status") != "passed":
+            raise ValueError("late runtime retry requires a prior clean Transformers reload")
         runtime = request.get("runtime", {})
         if runtime.get("vllm_reload", False):
             _vllm_reload_subprocess(artifact_dir, runtime)
@@ -1752,14 +1765,31 @@ def run_quantization_vllm_benchmark(request):
             model_receipt = destination / "observed-model.json"
             model_receipt.unlink(missing_ok=True)
             os.environ["A4FVLM_VLLM_MODEL_RECEIPT"] = str(model_receipt.resolve())
+        elif adapter_id == "kimi_vl":
+            from adapters.kimi_vl_dense import load_processor as load_native_processor
+            manifest = json.loads((Path(request["model"]["path"]) / "manifest.json").read_text())
+            native_processor = load_native_processor({**manifest["model"], **request["model"]})
+            model_receipt = destination / "observed-model.json"
+            model_receipt.unlink(missing_ok=True)
+            os.environ["A4FVLM_VLLM_MODEL_RECEIPT"] = str(model_receipt.resolve())
         for sample in samples:
             image_path = (
                 media_root / sample["media"]["logical_path"]
             ).resolve()
             prompt_spec = {"conversation": chat_prompt(sample, str(image_path))}
             if native_processor is not None:
-                prompt_spec = {"native_prompt": native_processor.unexpanded_prompt(sample["logical_question"]),
-                               "image_path": str(image_path), "image_token_id": native_processor.image_token_id}
+                if adapter_id == "kimi_vl":
+                    from adapters.kimi_vl_dense import unexpanded_prompt, prompt_token_ids
+                    from search.serving import open_native_image
+                    with open_native_image(image_path) as image:
+                        native_ids = prompt_token_ids(native_processor, sample["logical_question"], image.size)
+                    if len(native_ids) + evaluation["generation"]["max_new_tokens"] > 131072:
+                        raise ValueError("Kimi native timing input exceeds capacity; no truncation")
+                    prompt_spec = {"native_prompt": unexpanded_prompt(native_processor, sample["logical_question"]),
+                                   "image_path": str(image_path), "image_token_id": 163605}
+                else:
+                    prompt_spec = {"native_prompt": native_processor.unexpanded_prompt(sample["logical_question"]),
+                                   "image_path": str(image_path), "image_token_id": native_processor.image_token_id}
             prompts.append(prompt_spec)
         if token_keep_ratio is not None:
             report["vision_token"] = {
@@ -1784,7 +1814,7 @@ def run_quantization_vllm_benchmark(request):
         }
         if generation.get("ignore_eos", False):
             sampling_kwargs["ignore_eos"] = True
-        elif adapter_id == "deepseek_vl2":
+        elif adapter_id in {"deepseek_vl2", "kimi_vl"}:
             sampling_kwargs["stop_token_ids"] = [native_processor.tokenizer.eos_token_id]
         elif native_processor is not None:
             separator = native_processor.conversation_factory(native_processor.config.template).sep.strip()
@@ -1820,7 +1850,7 @@ def run_quantization_vllm_benchmark(request):
         from skills.stack_runtime import build_vllm_runtime_kwargs
 
         llm_kwargs.update(build_vllm_runtime_kwargs(runtime))
-        observations = {"runtime_evidence": {}, "runtime_settings": runtime} if adapter_id == "deepseek_vl2" else {}
+        observations = {"runtime_evidence": {}, "runtime_settings": runtime} if adapter_id in {"deepseek_vl2", "kimi_vl"} else {}
         with _GpuMemorySampler() as memory:
             engine_args = AsyncEngineArgs(
                 **llm_kwargs,
@@ -1856,8 +1886,11 @@ def run_quantization_vllm_benchmark(request):
                     **observations,
                 )
             )
-        if adapter_id == "deepseek_vl2":
-            from search.deepseek_serving import validate_runtime_observation
+        if adapter_id in {"deepseek_vl2", "kimi_vl"}:
+            if adapter_id == "kimi_vl":
+                from search.kimi_serving import validate_runtime_observation
+            else:
+                from search.deepseek_serving import validate_runtime_observation
             header = json.loads((Path(request["model"]["path"]) / "config.json").read_text())
             observed = json.loads(model_receipt.read_text())
             validate_runtime_observation(header, observed, token_runtime if token_keep_ratio is not None else None,

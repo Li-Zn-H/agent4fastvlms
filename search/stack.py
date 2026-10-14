@@ -684,6 +684,14 @@ def _run_lmms_gate(
     if output.exists():
         command.append("--resume")
     environment = os.environ.copy()
+    for variable in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        value = environment.get(variable)
+        try:
+            valid = value is not None and int(value) > 0
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            environment.pop(variable, None)
     environment["CUDA_VISIBLE_DEVICES"] = str(snap["config"]["device"])
     try:
         from search.lmms import _task_complete

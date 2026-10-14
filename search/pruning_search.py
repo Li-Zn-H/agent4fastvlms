@@ -74,7 +74,7 @@ def build_snapshot(
     def admitted_for(shapes):
         return [width for width in sorted({row["width"] for row in shapes}, reverse=True)
                 if all(shape_key(row) in measured for row in shapes if row["width"] == width)]
-    if probe["model"].get("adapter") == "deepseek_vl2":
+    if probe["model"].get("adapter") in {"deepseek_vl2", "kimi_vl"}:
         admitted = {kind: admitted_for([row for row in probe["shapes"] if row["kind"] == kind])
                     for kind in probe["context"]["original_widths"]}
     else:

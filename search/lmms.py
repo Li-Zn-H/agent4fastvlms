@@ -15,9 +15,21 @@ TASKS = ("chartqa", "mmstar", "textvqa_val", "docvqa_val", "pope")
 
 def cache_environment(model_config=None):
     env = os.environ.copy()
+    # Hosted runners may export zero as a placeholder thread limit.  The
+    # native LMMS workers call into OpenMP/PyTorch, which require positive
+    # thread counts; remove invalid inherited values before launching a task.
+    for variable in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        value = env.get(variable)
+        try:
+            valid = value is not None and int(value) > 0
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            env.pop(variable, None)
     for key in ("A4FVLMSP_TOKEN_KEEP_RATIO", "A4FVLMSP_TOKEN_SELECTION", "A4FVLMSP_TOKEN_RECEIPT",
                 "A4FVLM_LMMS_VLLM_MODEL", "A4FVLM_VLLM_SELECTION_TRACE", "A4FVLMS_VLLM_TOKEN_RUNTIME",
-                "A4FVLM_VLLM_MODEL_RECEIPT", "A4FVLM_LMMS_INTERNVL_MODEL", "A4FVLM_LMMS_DEEPSEEK_MODEL"):
+                "A4FVLM_VLLM_MODEL_RECEIPT", "A4FVLM_LMMS_INTERNVL_MODEL", "A4FVLM_LMMS_DEEPSEEK_MODEL",
+                "A4FVLM_LMMS_KIMI_MODEL", "A4FVLM_LMMS_KIMI_INPUT_RECEIPT"):
         env.pop(key, None)
     cache = PROJECT_ROOT / "data/lmms"
     env["HF_HUB_CACHE"] = str(cache / "hub")
@@ -50,6 +62,10 @@ def cache_environment(model_config=None):
         from search.lmms_deepseek_entry import validate_native_config
         validate_native_config(model_config)
         env["A4FVLM_LMMS_DEEPSEEK_MODEL"] = json.dumps(model_config)
+    if isinstance(model_config, dict) and model_config.get("adapter") == "kimi_vl":
+        from search.lmms_kimi_entry import validate_native_config
+        validate_native_config(model_config)
+        env["A4FVLM_LMMS_KIMI_MODEL"] = json.dumps(model_config)
     return env
 
 
@@ -57,7 +73,7 @@ def build_command(model_config, task, destination, *, limit=None):
     if task not in TASKS:
         raise ValueError(f"Unsupported task: {task}")
     adapter = model_config.get("adapter", "qwen3_vl")
-    if adapter not in {"qwen3_vl", "llava_onevision", "llava15", "internvl35", "deepseek_vl2"}:
+    if adapter not in {"qwen3_vl", "llava_onevision", "llava15", "internvl35", "deepseek_vl2", "kimi_vl"}:
         raise ValueError(f"No native LMMS implementation for {adapter}")
     if adapter == "qwen3_vl" and model_config["dtype"] != "bfloat16":
         raise ValueError("The native Qwen3-VL adapter loads BF16 weights")
@@ -78,7 +94,13 @@ def build_command(model_config, task, destination, *, limit=None):
     # even though its module still exists, so using it fails before model
     # construction and produces no task receipt.
     model_name = "llava_hf" if adapter in {"llava_onevision", "llava15"} else "qwen3_vl"
-    if adapter == "deepseek_vl2":
+    if adapter == "kimi_vl":
+        from search.lmms_kimi_entry import validate_native_config
+        validate_native_config(model_config)
+        command = [sys.executable, str(PROJECT_ROOT / "search/lmms_kimi_entry.py"),
+                   "--model", "kimi_vl", "--model_args", model_args,
+                   "--tasks", task, "--batch_size", "1", "--output_path", str(destination), "--log_samples"]
+    elif adapter == "deepseek_vl2":
         from search.lmms_deepseek_entry import validate_native_config
         validate_native_config(model_config)
         command = [sys.executable, str(PROJECT_ROOT / "search/lmms_deepseek_entry.py"),
@@ -149,6 +171,9 @@ def _task_complete(destination, task, model_config):
                         backend=model_config.get("execution_backend", "native_transformers"))
     if model_config.get("execution_backend") == "vllm":
         _serving_receipt(destination, task, model_config)
+    if model_config.get("adapter") == "kimi_vl":
+        from search.kimi_lmms_identity import validated_inputs
+        validated_inputs(destination, task, candidate=bool(model_config.get("stack_adapter")))
     return True
 
 
@@ -179,6 +204,21 @@ def run_lmms(model_config, tasks, *, output_dir, limit=None, resume=False):
         previous = set(destination.rglob("*_results.json"))
         print(f"Running {task}" + (f" (limit={limit})" if limit else " (full split)"), flush=True)
         env = cache_environment(model_config)
+        if model_config.get("adapter") == "kimi_vl":
+            from search.kimi_lmms_identity import paths
+            input_path, input_manifest = paths(destination, task)
+            if input_path.exists():
+                # A task without a complete native result must restart. Keep
+                # its previous observed inputs without appending duplicates.
+                number = 1
+                partial = input_path.with_suffix(f".partial-{number}.jsonl")
+                while partial.exists():
+                    number += 1
+                    partial = input_path.with_suffix(f".partial-{number}.jsonl")
+                input_path.rename(partial)
+                if input_manifest.exists():
+                    input_manifest.rename(partial.with_suffix(".json"))
+            env["A4FVLM_LMMS_KIMI_INPUT_RECEIPT"] = str(input_path)
         token_receipt = destination / f"{task}-token-mechanism.jsonl"
         if resume and token_receipt.exists():
             # No native result means this task must restart. Preserve its old
@@ -205,6 +245,9 @@ def run_lmms(model_config, tasks, *, output_dir, limit=None, resume=False):
         task_results = [row for row in task_results if task in row["results"]]
         if not task_results:
             raise RuntimeError(f"LMMS did not produce results for {task}")
+        if model_config.get("adapter") == "kimi_vl":
+            from search.kimi_lmms_identity import bind_receipt
+            bind_receipt(destination, task)
         if model_config.get("execution_backend") == "vllm":
             _task_complete(destination, task, model_config)
             # Per-sample final evidence includes the actual selected-index hashes.
@@ -237,7 +280,11 @@ def main():
     from search.context import require_stages
     # The complete `lmms` stage also requires a serving/vLLM bridge. InternVL
     # has separately guarded native entries, without enabling final serving.
-    if config.get("adapter") == "internvl35":
+    if config.get("adapter") == "kimi_vl":
+        from search.lmms_kimi_entry import validate_native_config
+        validate_native_config(config)
+        require_stages(config, ("dense",))
+    elif config.get("adapter") == "internvl35":
         from search.lmms_internvl_entry import validate_native_config
         validate_native_config(config)
         require_stages(config, ("dense",))

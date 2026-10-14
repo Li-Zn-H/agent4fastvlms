@@ -309,6 +309,9 @@ def worker(request, output):
     elif snap["model"].get("adapter") == "deepseek_vl2":
         from search.deepseek_serving import DeepSeekSession
         session = DeepSeekSession(snap, backend, output)
+    elif snap["model"].get("adapter") == "kimi_vl":
+        from search.kimi_serving import KimiSession
+        session = KimiSession(snap, backend, output)
     else:
         session = Session(snap, backend, output)
     for item in snap["requests"][:snap["warmup"]]:
@@ -354,7 +357,7 @@ def complete_output(directory, snap, backend):
         for row in rows:
             mechanism = row.get("token_mechanism") or {}
             images = mechanism.get("images", [])
-            if snap["model"].get("adapter", "qwen3_vl") in {"llava_onevision", "llava15", "internvl35", "deepseek_vl2"}:
+            if snap["model"].get("adapter", "qwen3_vl") in {"llava_onevision", "llava15", "internvl35", "deepseek_vl2", "kimi_vl"}:
                 positions_valid = all(i.get("position_type") == "1d_compacted"
                                       and i.get("positions_after") == i.get("image_tokens_after")
                                       for i in images)

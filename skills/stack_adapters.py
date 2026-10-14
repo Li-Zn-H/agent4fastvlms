@@ -32,6 +32,17 @@ def export_pruned_gptqmodel(
 
     if candidate.get("route") != "gptqmodel_w4a16":
         raise StackAdapterError("Only GPTQModel W4A16 has a Stack adapter")
+    if model.get("adapter") == "kimi_vl":
+        from skills.kimi_vl_artifact import read_parent
+        from skills.kimi_vl_quantization import export_multimodal_gptq
+        _, _, parent = read_parent(parent_dir)
+        if parent.get("recipe_digest") != recipe_digest:
+            raise StackAdapterError("Kimi physical parent differs from selected recipe")
+        importlib.import_module("gptqmodel")
+        return export_multimodal_gptq(candidate=candidate.get("candidate_config", candidate),
+                                      model={**model, "path": str(parent_dir)}, processor=processor,
+                                      calibration=calibration, output_dir=output_dir,
+                                      module_names=module_names)
     if model.get("adapter") == "deepseek_vl2":
         from skills.deepseek_vl2_artifact import read_parent
         from skills.deepseek_vl2_quantization import export_multimodal_gptq

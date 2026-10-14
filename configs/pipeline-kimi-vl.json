@@ -1,0 +1,14 @@
+{
+  "model_id": "kimi_vl",
+  "output": "results/model/kimi_vl/a800/pipeline",
+  "coordinator_python": ".venv-kimi/bin/python",
+  "optimization_config": "configs/optimization-kimi-vl.json",
+  "token_output": "results/model/kimi_vl/a800/search/token/runner",
+  "structured_pruning_config": "configs/structured_pruning-kimi-vl.json",
+  "sp_probe_output": "results/model/kimi_vl/a800/search/structured-pruning/hardware-probe",
+  "quantization_config": "configs/quantization-kimi-vl.json",
+  "stack_config": "configs/stack-kimi-vl.json",
+  "runtime_config": "configs/stack_runtime-kimi-vl.json",
+  "kv_config": "configs/stack_kv_cache-kimi-vl.json",
+  "serving_lmms_config": "configs/serving_lmms-kimi-vl.json"
+}

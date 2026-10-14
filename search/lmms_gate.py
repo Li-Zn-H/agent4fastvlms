@@ -131,6 +131,14 @@ def _serving_receipt(root: Path, task: str, descriptor: dict[str, Any]) -> dict[
     backend = runtime.get("attention_backend", "auto")
     if backend != "auto" and observed["attention_backends"] != [backend]:
         raise ValueError(f"Observed attention backend mismatch for {task}")
+    if descriptor.get("adapter") == "kimi_vl":
+        from search.model import PROJECT_ROOT
+        from search.kimi_serving import validate_runtime_observation
+        header = _read(PROJECT_ROOT / descriptor["path"] / "config.json")
+        validate_runtime_observation(header, observed, {
+            "keep_ratio": descriptor["token_keep_ratio"],
+            "selection": descriptor["token_selection"],
+        }, runtime.get("kv_cache_dtype", "auto"))
     return receipt
 
 
@@ -238,6 +246,24 @@ def aggregate_lmms(
             sample_sets.append(aligned)
         if sample_sets[0] != sample_sets[1]:
             raise ValueError(f"Dense/candidate sample alignment mismatch for {task}")
+        # LMMS 0.7.3 can hash a None request.doc for every sample. Kimi
+        # additionally binds real native rasters, prompts, generation and outputs.
+        kimi_roots = []
+        for root in (candidate_root, dense_root):
+            config_path = Path(root) / "config.json"
+            if config_path.is_file():
+                config = _read(config_path)
+                kimi_roots.append(config.get("model", {}).get("adapter") == "kimi_vl")
+            else:
+                kimi_roots.append(False)
+        declared_kimi = bool(model_config and Path(model_config).is_file()
+                             and _read(Path(model_config)).get("adapter") == "kimi_vl")
+        if any(kimi_roots) or declared_kimi:
+            if not all(kimi_roots):
+                raise ValueError(f"Kimi Dense/candidate config mismatch for {task}")
+            from search.kimi_lmms_identity import validated_inputs
+            if validated_inputs(candidate_root, task, candidate=True) != validated_inputs(dense_root, task):
+                raise ValueError(f"Kimi Dense/candidate native input alignment mismatch for {task}")
         task_rows.append(
             {
                 "task": task,

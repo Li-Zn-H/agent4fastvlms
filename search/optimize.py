@@ -283,6 +283,17 @@ def _cuda_launch(request, directory):
         else request["hardware"].split(",", 1)[0].strip(),
         "PYTHONDONTWRITEBYTECODE": "1",
     }
+    # Some hosted environments use zero as a placeholder for thread limits.
+    # OpenMP and PyTorch reject it, and every runtime child inherits this
+    # environment. Remove invalid values at the common process boundary.
+    for variable in ("OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        value = env.get(variable)
+        try:
+            valid = value is not None and int(value) > 0
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            env.pop(variable, None)
     # Invoking an interpreter by absolute path does not activate its virtual
     # environment.  Backend runtimes such as vLLM spawn compiler helpers
     # (``ninja``, CUDA utilities, etc.) by PATH, so expose the selected

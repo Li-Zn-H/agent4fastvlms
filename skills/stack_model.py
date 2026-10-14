@@ -58,6 +58,9 @@ def stack_architecture_for_config(config: Any) -> str:
     if model_type == "deepseek_vl_v2":
         from skills.deepseek_vl2_artifact import STACK_ARCHITECTURE as deepseek_architecture
         return deepseek_architecture
+    if model_type == "kimi_vl":
+        from skills.kimi_vl_artifact import STACK_ARCHITECTURE as kimi_architecture
+        return kimi_architecture
     if model_type == "llava":
         return LLAVA15_STACK_ARCHITECTURE
     if model_type == "internvl_chat":
@@ -183,6 +186,10 @@ def write_pruned_parent(
         from skills.deepseek_vl2_artifact import write_parent
         return write_parent(model, processor, recipe, output_dir)
 
+    if getattr(model.config, "model_type", None) == "kimi_vl":
+        from skills.kimi_vl_artifact import write_parent
+        return write_parent(model, processor, recipe, output_dir)
+
     if getattr(model.config, "model_type", None) == "internvl_chat":
         from skills.internvl35_artifact import write_parent
         return write_parent(model, processor, recipe, output_dir)
@@ -237,6 +244,9 @@ def load_stack_model(model_config: dict[str, Any]) -> tuple[Any, Any]:
 
     if model_config.get("adapter") == "deepseek_vl2":
         from skills.deepseek_vl2_artifact import load_artifact
+        return load_artifact(model_config)
+    if model_config.get("adapter") == "kimi_vl":
+        from skills.kimi_vl_artifact import load_artifact
         return load_artifact(model_config)
     if model_config.get("adapter") == "internvl35":
         from skills.internvl35_artifact import load_artifact
